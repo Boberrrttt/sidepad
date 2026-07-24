@@ -1,0 +1,36 @@
+{
+  "name": "sidepad",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.sidepad.app",
+    "productName": "sidepad",
+    "executableName": "sidepad",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "renderer/**/*",
+      "build/icon.ico",
+      "package.json",
+      ".env"
+    ],
+    "win": {
+      "target": "dir",
+      "icon": "build/icon.ico"
+    }
+  },
+  "devDependencies": {
+    "electron": "^37.2.3",
+    "electron-builder": "^26.15.3"
+  },
+  "dependencies": {
+    "marked": "^18.0.7"
+  }
+}
