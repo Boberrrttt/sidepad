@@ -16,25 +16,25 @@ function titleOverlay(collapsed) {
 
 const iconPath = path.join(__dirname, '..', 'build', 'icon.ico');
 
-function startupMarkerPath() {
-  return path.join(app.getPath('userData'), '.startup-defaulted');
+function startupPrefPath() {
+  return path.join(app.getPath('userData'), 'open-at-login');
 }
 
 function getOpenAtLogin() {
-  return !!app.getLoginItemSettings().openAtLogin;
+  const p = startupPrefPath();
+  if (!fs.existsSync(p)) return true;
+  return fs.readFileSync(p, 'utf8') !== '0';
 }
 
 function setOpenAtLogin(on) {
-  app.setLoginItemSettings({ openAtLogin: !!on });
-  return getOpenAtLogin();
+  const want = !!on;
+  fs.writeFileSync(startupPrefPath(), want ? '1' : '0');
+  app.setLoginItemSettings({ openAtLogin: want, path: process.execPath });
+  return want;
 }
 
-function ensureDefaultStartup() {
-  const marker = startupMarkerPath();
-  if (fs.existsSync(marker)) return;
-
-  setOpenAtLogin(true);
-  fs.writeFileSync(marker, '');
+function applyStartupPref() {
+  setOpenAtLogin(getOpenAtLogin());
 }
 
 function createWindow() {
@@ -58,7 +58,7 @@ function createWindow() {
 app.whenReady().then(() => {
   if (process.platform === 'win32') app.setAppUserModelId('com.sidepad.app');
 
-  ensureDefaultStartup();
+  applyStartupPref();
   Menu.setApplicationMenu(null);
 
   ipcMain.handle('list-notes', () => notes.listNotes());

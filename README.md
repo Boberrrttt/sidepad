@@ -52,7 +52,7 @@ npm start
 npm run dist
 ```
 
-Output: `dist/win-unpacked/sidepad.exe`
+Output: `dist/sidepad 1.0.0.exe` (single portable file)
 
 The build packs `.env` so the packaged app can reach Groq. Keep that key private if you share the build.
 
