@@ -92,6 +92,12 @@ body {
     var(--bone);
 }
 
+.note-editor:empty:before {
+  content: attr(data-placeholder);
+  color: var(--mute);
+  pointer-events: none;
+}
+
 .note-preview h1,
 .note-preview h2,
 .note-preview h3 {

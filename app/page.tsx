@@ -29,6 +29,40 @@ function wordCount(text: string) {
     .filter(Boolean).length;
 }
 
+function htmlToMd(root: HTMLElement): string {
+  function walk(node: Node): string {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
+    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+
+    const el = node as HTMLElement;
+    const tag = el.tagName.toLowerCase();
+    const kids = () => Array.from(el.childNodes).map(walk).join('');
+
+    if (tag === 'br') return '\n';
+    if (tag === 'strong' || tag === 'b') return `**${kids()}**`;
+    if (tag === 'em' || tag === 'i') return `*${kids()}*`;
+    if (tag === 'u') return `<u>${kids()}</u>`;
+    if (tag === 'code') {
+      return el.parentElement?.tagName.toLowerCase() === 'pre' ? kids() : `\`${kids()}\``;
+    }
+    if (tag === 'pre') return `\`\`\`\n${kids()}\n\`\`\`\n\n`;
+    if (tag === 'h1') return `# ${kids().trim()}\n\n`;
+    if (tag === 'h2') return `## ${kids().trim()}\n\n`;
+    if (tag === 'h3') return `### ${kids().trim()}\n\n`;
+    if (tag === 'p' || tag === 'div') {
+      const t = kids();
+      return t ? `${t.replace(/\n$/, '')}\n\n` : '';
+    }
+    if (tag === 'li') return `- ${kids().trim()}\n`;
+    if (tag === 'ul' || tag === 'ol') return `${kids()}\n`;
+    if (tag === 'a') return `[${kids()}](${el.getAttribute('href') || ''})`;
+
+    return kids();
+  }
+
+  return Array.from(root.childNodes).map(walk).join('').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 export default function SidePad() {
   const [allNotes, setAllNotes] = useState<Note[]>([]);
   const [current, setCurrent] = useState<string | null>(null);
@@ -37,8 +71,6 @@ export default function SidePad() {
   const [status, setStatus] = useState('Ready');
   const [statusKind, setStatusKind] = useState<'neutral' | 'ok' | 'error'>('neutral');
   const [search, setSearch] = useState('');
-  const [previewing, setPreviewing] = useState(false);
-  const [previewHtml, setPreviewHtml] = useState('');
   const [chatCollapsed, setChatCollapsed] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [askInput, setAskInput] = useState('');
@@ -47,11 +79,12 @@ export default function SidePad() {
   const [confirmName, setConfirmName] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
 
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
   const chatLogRef = useRef<HTMLDivElement>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentRef = useRef<string | null>(null);
   const bodyValueRef = useRef('');
+  const editorGen = useRef(0);
 
   currentRef.current = current;
   bodyValueRef.current = body;
@@ -76,19 +109,29 @@ export default function SidePad() {
     );
   }, []);
 
+  const fillEditor = useCallback(async (md: string) => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const g = ++editorGen.current;
+    const html = String(await marked.parse(md || '', { async: true }));
+    if (g !== editorGen.current) return;
+    el.innerHTML = html;
+  }, []);
+
   const openNote = useCallback(
     async (name: string) => {
       const notes = await listNotesLocal();
       const note = notes.find((n) => n.name === name);
+      const nextBody = note?.body ?? '';
       setCurrent(name);
       setTitle(name);
-      setBody(note?.body ?? '');
-      setPreviewing(false);
+      setBody(nextBody);
       await loadChat(name);
       flash('Editing');
       setAllNotes(notes);
+      await fillEditor(nextBody);
     },
-    [flash, loadChat]
+    [flash, loadChat, fillEditor]
   );
 
   const saveCurrent = useCallback(async () => {
@@ -156,9 +199,9 @@ export default function SidePad() {
   }, [flash, openNote, refreshList]);
 
   useEffect(() => {
-    if (!previewing) return;
-    void marked.parse(body, { async: true }).then((html) => setPreviewHtml(String(html)));
-  }, [body, previewing]);
+    if (!current) return;
+    void fillEditor(body);
+  }, [current, fillEditor]);
 
   function toggleChat(collapsed: boolean) {
     setChatCollapsed(collapsed);
@@ -174,7 +217,6 @@ export default function SidePad() {
     setCurrent(name);
     setTitle(name);
     setBody('');
-    setPreviewing(false);
     await loadChat(name);
     flash('Created', 'ok');
     await refreshList();
@@ -214,7 +256,6 @@ export default function SidePad() {
       setCurrent(null);
       setTitle('');
       setBody('');
-      setPreviewing(false);
       setChatMessages([]);
     }
 
@@ -234,37 +275,17 @@ export default function SidePad() {
     flash('Chat cleared', 'ok');
   }
 
-  function wrapSelection(before: string, after = before) {
+  function onEditorInput() {
     const el = bodyRef.current;
-    if (!el || previewing || !current) return;
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const selected = body.slice(start, end) || 'text';
-    const next = body.slice(0, start) + before + selected + after + body.slice(end);
-    setBody(next);
+    if (!el || !current) return;
+    setBody(htmlToMd(el));
     scheduleSave();
-    requestAnimationFrame(() => {
-      el.focus();
-      el.setSelectionRange(start + before.length, start + before.length + selected.length);
-    });
   }
 
-  function bulletSelection() {
-    const el = bodyRef.current;
-    if (!el || previewing || !current) return;
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const lineStart = body.lastIndexOf('\n', start - 1) + 1;
-    const i = body.indexOf('\n', end);
-    const lineEnd = i === -1 ? body.length : i;
-    const block = body.slice(lineStart, lineEnd);
-    const nextBlock = block
-      .split('\n')
-      .map((line) => (line.startsWith('- ') ? line : `- ${line}`))
-      .join('\n');
-    const next = body.slice(0, lineStart) + nextBlock + body.slice(lineEnd);
-    setBody(next);
-    scheduleSave();
+  function format(cmd: string) {
+    document.execCommand(cmd);
+    bodyRef.current?.focus();
+    onEditorInput();
   }
 
   async function askCurrent() {
@@ -335,6 +356,7 @@ export default function SidePad() {
             });
           } else if (ev.type === 'note_write') {
             setBody(ev.body);
+            await fillEditor(ev.body);
             await mirrorNoteFromServer(current, ev.body, ev.mtime);
             await refreshList();
           } else if (ev.type === 'error') {
@@ -523,55 +545,37 @@ export default function SidePad() {
             </div>
 
             <div className="mt-4 flex items-center justify-between border-b border-[var(--line-soft)] pb-2">
-              {!previewing ? (
-                <div className="flex gap-0.5" role="toolbar" aria-label="Markdown">
-                  {(
-                    [
-                      ['bold', 'B'],
-                      ['italic', 'I'],
-                      ['underline', 'U'],
-                      ['bullet', '•'],
-                    ] as const
-                  ).map(([kind, label]) => (
-                    <button
-                      key={kind}
-                      type="button"
-                      data-md={kind}
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => {
-                        if (kind === 'bold') wrapSelection('**');
-                        else if (kind === 'italic') wrapSelection('*');
-                        else if (kind === 'underline') wrapSelection('<u>', '</u>');
-                        else bulletSelection();
-                      }}
-                      className="h-8 min-w-8 rounded-lg px-2 text-sm font-semibold text-[var(--ink-soft)] transition-colors hover:bg-[var(--line-soft)] active:scale-[0.98]"
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <span className="text-xs font-medium text-[var(--mute)]">Preview</span>
-              )}
+              <div className="flex gap-0.5" role="toolbar" aria-label="Format">
+                {(
+                  [
+                    ['bold', 'B'],
+                    ['italic', 'I'],
+                    ['underline', 'U'],
+                  ] as const
+                ).map(([cmd, label]) => (
+                  <button
+                    key={cmd}
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => format(cmd)}
+                    className="h-8 min-w-8 rounded-lg px-2 text-sm font-semibold text-[var(--ink-soft)] transition-colors hover:bg-[var(--line-soft)] active:scale-[0.98]"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {previewing ? (
-              <div
-                className="note-preview mt-3 min-h-0 flex-1 overflow-auto bg-[var(--panel)] py-3"
-                dangerouslySetInnerHTML={{ __html: previewHtml }}
-              />
-            ) : (
-              <textarea
-                ref={bodyRef}
-                value={body}
-                onChange={(e) => {
-                  setBody(e.target.value);
-                  scheduleSave();
-                }}
-                placeholder="Start writing"
-                className="mt-3 min-h-0 flex-1 resize-none border-0 bg-transparent py-1 text-[15px] leading-relaxed outline-none"
-              />
-            )}
+            <div
+              ref={bodyRef}
+              contentEditable
+              role="textbox"
+              aria-multiline="true"
+              aria-label="Note body"
+              data-placeholder="Start writing"
+              className="note-preview note-editor mt-3 min-h-0 flex-1 overflow-auto bg-transparent py-1 text-[15px] leading-relaxed outline-none"
+              onInput={onEditorInput}
+            />
 
             <div className="mt-3 flex items-center justify-between gap-3 border-t border-[var(--line-soft)] pt-3">
               <p
@@ -589,17 +593,6 @@ export default function SidePad() {
                 <p className="m-0 mr-2 text-sm tabular-nums text-[var(--mute)]">
                   {words === 1 ? '1 word' : `${words} words`}
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setPreviewing((v) => !v)}
-                  className={`rounded-[var(--radius)] px-3 py-1.5 text-sm font-medium transition-colors active:scale-[0.98] ${
-                    previewing
-                      ? 'bg-[var(--accent)] text-white'
-                      : 'text-[var(--ink-soft)] hover:bg-[var(--line-soft)]'
-                  }`}
-                >
-                  {previewing ? 'Edit' : 'Preview'}
-                </button>
                 <button
                   type="button"
                   onClick={() => current && setConfirmName(current)}
