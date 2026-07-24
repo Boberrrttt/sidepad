@@ -1,0 +1,29 @@
+{
+  "name": "SidePad",
+  "short_name": "SidePad",
+  "description": "Notes that stay with you",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#eef1ee",
+  "theme_color": "#14201a",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

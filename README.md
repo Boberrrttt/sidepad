@@ -1,31 +1,15 @@
 # SidePad
 
-Notes that stay with you.
-
-SidePad is a calm desktop notepad for quick writing, markdown, and asking AI about the note you’re on — without leaving the pad.
-
-![SidePad](build/icon.png)
-
-## What it is
-
-A local Electron app for everyday notes. Files live on your machine as markdown. An optional Ask sidebar talks to Groq so you can question a note or have the model rewrite it.
-
-## Features
-
-- Local markdown notes with autosave
-- Search across titles and bodies
-- Markdown toolbar and live preview
-- Ask sidebar with per-note chat history (stored locally)
-- AI can edit the current note when you ask
-- Open on startup (on by default; toggle in the sidebar)
-- Collapsible Ask panel
+Notes that stay with you — Next.js PWA notepad with per-user accounts, offline cache, Turso sync, and Groq Ask.
 
 ## Stack
 
-- Electron
-- Plain HTML / CSS / JS
-- Groq for chat and note edits
-- `marked` for markdown preview
+- Next.js (App Router) + TypeScript + Tailwind
+- Username/password accounts (each user has their own notes)
+- Turso (libSQL) for cross-device sync
+- IndexedDB offline cache (last-write-wins, per user)
+- Groq for Ask sidebar
+- PWA via `@ducanh2912/next-pwa`
 
 ## Setup
 
@@ -33,37 +17,30 @@ A local Electron app for everyday notes. Files live on your machine as markdown.
 npm install
 ```
 
-Create a `.env` in the project root:
+Copy env values into `.env.local`:
 
 ```env
-GROQ_API_KEY=your_key_here
+SESSION_SECRET=long-random-string
+TURSO_DATABASE_URL=libsql://...
+TURSO_AUTH_TOKEN=...
+GROQ_API_KEY=...
 GROQ_MODEL=llama-3.3-70b-versatile
 ```
 
-## Run
-
 ```bash
-npm start
+npm run dev
 ```
 
-## Build (Windows)
+Open `http://localhost:3000`, register or sign in.
 
-```bash
-npm run dist
-```
+## Scripts
 
-Output: `dist/sidepad 1.0.0.exe` (single portable file)
+- `npm run dev` — local dev
+- `npm run build` — production build (+ service worker)
+- `npm start` — serve production build
 
-The build packs `.env` so the packaged app can reach Groq. Keep that key private if you share the build.
+## Notes
 
-## Layout
-
-```
-src/         main process, notes, chat, AI
-renderer/    UI
-build/       app icon
-```
-
-## License
-
-Private.
+- Each account only sees its own notes/chats.
+- Edits work offline via IndexedDB; sync when back online.
+- Ask needs network (Groq).

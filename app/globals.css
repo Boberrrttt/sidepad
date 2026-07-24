@@ -1,0 +1,125 @@
+@import "tailwindcss";
+
+:root {
+  --ink: #121512;
+  --ink-soft: #3d463f;
+  --mute: #6b746c;
+  --bone: #e8ece8;
+  --paper: #f4f6f4;
+  --panel: #fbfcfb;
+  --line: #d5ddd7;
+  --line-soft: #e2e7e3;
+  --forest: #14201a;
+  --accent: #3d7a5c;
+  --accent-press: #32634b;
+  --accent-soft: #d7e8de;
+  --danger: #a33b2b;
+  --ok: #2f6b4f;
+  --sidebar: #14201a;
+  --sidebar-fg: #f3f6f4;
+  --radius: 12px;
+  --scroll: color-mix(in oklab, var(--mute) 55%, transparent);
+  --scroll-hover: color-mix(in oklab, var(--mute) 85%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ink: #e8ece8;
+    --ink-soft: #b8c0b9;
+    --mute: #8a938b;
+    --bone: #0e1411;
+    --paper: #121a16;
+    --panel: #17201b;
+    --line: #2a3530;
+    --line-soft: #24302a;
+    --forest: #dfe6e1;
+    --accent: #5a9a76;
+    --accent-press: #4a8564;
+    --accent-soft: #1e3328;
+    --danger: #d47264;
+    --ok: #6bb08a;
+    --sidebar: #0a100d;
+    --sidebar-fg: #e8ece8;
+    --scroll: color-mix(in oklab, var(--mute) 45%, transparent);
+    --scroll-hover: color-mix(in oklab, var(--mute) 70%, transparent);
+  }
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scroll) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background-color: var(--scroll);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scroll-hover);
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.scroll-on-dark {
+  --scroll: color-mix(in oklab, var(--sidebar-fg) 28%, transparent);
+  --scroll-hover: color-mix(in oklab, var(--sidebar-fg) 48%, transparent);
+}
+
+body {
+  font-family: var(--font-outfit), ui-sans-serif, sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(ellipse 70% 50% at 100% 0%, color-mix(in oklab, var(--accent) 14%, transparent), transparent 55%),
+    radial-gradient(ellipse 45% 35% at 0% 100%, color-mix(in oklab, var(--sidebar) 8%, transparent), transparent 50%),
+    var(--bone);
+}
+
+.note-preview h1,
+.note-preview h2,
+.note-preview h3 {
+  margin: 0.6em 0 0.35em;
+  line-height: 1.25;
+}
+
+.note-preview p,
+.note-preview ul,
+.note-preview ol {
+  margin: 0.45em 0;
+}
+
+.note-preview code {
+  font-size: 0.92em;
+  background: var(--line-soft);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+
+.note-preview pre {
+  overflow: auto;
+  padding: 0.75rem;
+  background: var(--line-soft);
+  border-radius: 8px;
+}
+
+.note-preview pre code {
+  background: none;
+  padding: 0;
+}
