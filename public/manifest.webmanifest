@@ -2,7 +2,7 @@
   "name": "SidePad",
   "short_name": "SidePad",
   "description": "Notes that stay with you",
-  "start_url": "/",
+  "start_url": "/notes",
   "display": "standalone",
   "background_color": "#eef1ee",
   "theme_color": "#14201a",
