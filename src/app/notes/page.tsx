@@ -30,6 +30,8 @@ export default function SidePad() {
   const [statusKind, setStatusKind] = useState<'neutral' | 'ok' | 'error'>('neutral');
   const [search, setSearch] = useState('');
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [confirmName, setConfirmName] = useState<string | null>(null);
   const [isReady, setIsReady] = useState(false);
@@ -91,8 +93,26 @@ export default function SidePad() {
   }, [flash, saveCurrent]);
 
   useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 768px)');
+    const syncMobile = () => setIsMobile(mediaQuery.matches);
+
+    syncMobile();
+    mediaQuery.addEventListener('change', syncMobile);
+
+    return () => mediaQuery.removeEventListener('change', syncMobile);
+  }, []);
+
+  useEffect(() => {
     setIsOnline(navigator.onLine);
-    setIsChatCollapsed(localStorage.getItem('sidepad-chat-collapsed') === '1');
+
+    const mobile = window.matchMedia('(max-width: 768px)').matches;
+    const chatStored = localStorage.getItem('sidepad-chat-collapsed');
+    const sidebarStored = localStorage.getItem('sidepad-sidebar-collapsed');
+
+    setIsChatCollapsed(chatStored === '1' || (chatStored === null && mobile));
+    setIsSidebarCollapsed(
+      sidebarStored === '1' || (sidebarStored === null && mobile)
+    );
 
     (async () => {
       try {
@@ -148,7 +168,34 @@ export default function SidePad() {
   function toggleChat(collapsed: boolean) {
     setIsChatCollapsed(collapsed);
     localStorage.setItem('sidepad-chat-collapsed', collapsed ? '1' : '0');
+
+    if (!collapsed && isMobile) {
+      setIsSidebarCollapsed(true);
+      localStorage.setItem('sidepad-sidebar-collapsed', '1');
+    }
   }
+
+  function toggleSidebar(collapsed: boolean) {
+    setIsSidebarCollapsed(collapsed);
+    localStorage.setItem('sidepad-sidebar-collapsed', collapsed ? '1' : '0');
+
+    if (!collapsed && isMobile) {
+      setIsChatCollapsed(true);
+      localStorage.setItem('sidepad-chat-collapsed', '1');
+    }
+  }
+
+  const gridCols = isMobile
+    ? 'grid-cols-[0px_1fr_0px]'
+    : isSidebarCollapsed
+      ? isChatCollapsed
+        ? 'grid-cols-[0px_1fr_0px]'
+        : 'grid-cols-[0px_1fr_320px]'
+      : isChatCollapsed
+        ? 'grid-cols-[240px_1fr_0px]'
+        : 'grid-cols-[240px_1fr_320px]';
+
+  const isDrawerOpen = isMobile && (!isSidebarCollapsed || !isChatCollapsed);
 
   async function createNote() {
     const taken = new Set(allNotes.map((note) => note.name));
@@ -264,18 +311,44 @@ export default function SidePad() {
 
   return (
     <div
-      className={`grid h-full min-h-0 overflow-hidden transition-[grid-template-columns] duration-240 ease-[cubic-bezier(0.32,0.72,0,1)] ${
-        isChatCollapsed
-          ? 'grid-cols-[240px_1fr_0px]'
-          : 'grid-cols-[240px_1fr_320px]'
-      }`}
+      className={`grid h-full min-h-0 overflow-hidden transition-[grid-template-columns] duration-240 ease-[cubic-bezier(0.32,0.72,0,1)] ${gridCols}`}
     >
-      <aside className="scroll-on-dark flex min-h-0 flex-col bg-[var(--sidebar)] px-3 pb-3 text-[var(--sidebar-fg)]">
-        <div className="px-2 pb-4 pt-7">
-          <p className="m-0 text-[26px] font-bold leading-none tracking-tight">SidePad</p>
-          <p className="mt-2 max-w-[16ch] text-[13px] leading-snug text-[var(--sidebar-fg)]/55">
-            Notes that stay with you
-          </p>
+      {isDrawerOpen ? (
+        <button
+          type="button"
+          aria-label="Close panel"
+          className="fixed inset-0 z-30 bg-black/40"
+          onClick={() => {
+            toggleSidebar(true);
+            toggleChat(true);
+          }}
+        />
+      ) : null}
+
+      <aside
+        className={`scroll-on-dark flex min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--sidebar)] px-3 pb-3 text-[var(--sidebar-fg)] transition-[opacity,transform] duration-200 ${
+          isSidebarCollapsed
+            ? 'pointer-events-none opacity-0'
+            : isMobile
+              ? 'fixed inset-y-0 left-0 z-40 w-[min(240px,85vw)] opacity-100 shadow-[8px_0_32px_rgba(0,0,0,0.28)]'
+              : 'opacity-100'
+        }`}
+      >
+        <div className="flex items-start justify-between gap-2 px-2 pb-4 pt-7">
+          <div>
+            <p className="m-0 text-[26px] font-bold leading-none tracking-tight">SidePad</p>
+            <p className="mt-2 max-w-[16ch] text-[13px] leading-snug text-[var(--sidebar-fg)]/55">
+              Notes that stay with you
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label="Hide notes"
+            onClick={() => toggleSidebar(true)}
+            className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius)] text-[var(--sidebar-fg)]/55 transition-colors hover:bg-white/10 hover:text-[var(--sidebar-fg)] active:scale-[0.98]"
+          >
+            ‹
+          </button>
         </div>
 
         <button
@@ -306,9 +379,13 @@ export default function SidePad() {
                 <button
                   type="button"
                   onClick={() =>
-                    openNote(note.name).catch((caughtError) =>
-                      flash(errorMessage(caughtError), 'error')
-                    )
+                    openNote(note.name)
+                      .then(() => {
+                        if (isMobile) toggleSidebar(true);
+                      })
+                      .catch((caughtError) =>
+                        flash(errorMessage(caughtError), 'error')
+                      )
                   }
                   className={`w-full rounded-[var(--radius)] px-3 py-2 pr-9 text-left text-sm transition-colors ${
                     note.name === current
@@ -359,6 +436,7 @@ export default function SidePad() {
         status={status}
         statusKind={statusKind}
         isChatCollapsed={isChatCollapsed}
+        isSidebarCollapsed={isSidebarCollapsed}
         onTitleChange={setTitle}
         onCommitTitle={async () => {
           try {
@@ -370,6 +448,7 @@ export default function SidePad() {
         onBodyChange={setBody}
         onScheduleSave={scheduleSave}
         onOpenAsk={() => toggleChat(false)}
+        onOpenSidebar={() => toggleSidebar(false)}
         onRequestDelete={() => current && setConfirmName(current)}
         onCreateNote={() =>
           createNote().catch((caughtError) =>
@@ -383,6 +462,7 @@ export default function SidePad() {
         isEmpty={isEmpty}
         isOnline={isOnline}
         isCollapsed={isChatCollapsed}
+        isOverlay={isMobile}
         onCollapse={toggleChat}
         flash={flash}
         saveCurrent={saveCurrent}

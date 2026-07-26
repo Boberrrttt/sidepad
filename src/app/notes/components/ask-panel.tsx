@@ -15,6 +15,7 @@ type AskPanelProps = {
   isEmpty: boolean;
   isOnline: boolean;
   isCollapsed: boolean;
+  isOverlay: boolean;
   onCollapse: (isCollapsed: boolean) => void;
   flash: (message: string, kind?: 'neutral' | 'ok' | 'error') => void;
   saveCurrent: () => Promise<void>;
@@ -27,6 +28,7 @@ export function AskPanel({
   isEmpty,
   isOnline,
   isCollapsed,
+  isOverlay,
   onCollapse,
   flash,
   saveCurrent,
@@ -171,36 +173,25 @@ export function AskPanel({
 
   return (
     <aside
-      className={`flex min-h-0 min-w-0 flex-col overflow-hidden border-l border-[var(--line)] bg-[var(--panel)] transition-opacity duration-200 ${
-        isCollapsed ? 'pointer-events-none border-0 opacity-0' : 'opacity-100'
+      className={`flex min-h-0 min-w-0 flex-col overflow-hidden border-l border-[var(--line)] bg-[var(--panel)] transition-[opacity,transform] duration-200 ${
+        isCollapsed
+          ? 'pointer-events-none border-0 opacity-0'
+          : isOverlay
+            ? 'fixed inset-y-0 right-0 z-40 w-[min(320px,90vw)] border-0 opacity-100 shadow-[-8px_0_32px_rgba(0,0,0,0.28)]'
+            : 'opacity-100'
       }`}
       aria-label="Note chat"
     >
-      <div className="flex items-center justify-between gap-2 px-4 pb-2 pt-4">
-        <p className="m-0 text-[15px] font-semibold tracking-tight text-[var(--ink)]">Ask</p>
-        <div className="flex items-center gap-1">
-          {chatMessages.length > 0 ? (
-            <button
-              type="button"
-              onClick={() =>
-                clearChat().catch((caughtError) =>
-                  flash(errorMessage(caughtError), 'error')
-                )
-              }
-              className="rounded-[var(--radius)] px-2.5 py-1 text-[13px] text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--ink)] active:scale-[0.98]"
-            >
-              Clear
-            </button>
-          ) : null}
-          <button
-            type="button"
-            aria-label="Hide ask"
-            onClick={() => onCollapse(true)}
-            className="flex h-8 w-8 items-center justify-center rounded-[var(--radius)] text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--ink)] active:scale-[0.98]"
-          >
-            ›
-          </button>
-        </div>
+      <div className="flex items-start justify-between gap-2 px-4 pb-3 pt-5">
+        <p className="m-0 pt-1 text-[15px] font-semibold tracking-tight text-[var(--ink)]">Ask</p>
+        <button
+          type="button"
+          aria-label="Hide ask"
+          onClick={() => onCollapse(true)}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius)] text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--ink)] active:scale-[0.98]"
+        >
+          ›
+        </button>
       </div>
 
       <div ref={chatLogRef} className="min-h-0 flex-1 overflow-auto px-4">
@@ -238,6 +229,21 @@ export function AskPanel({
       </div>
 
       <div className="border-t border-[var(--line-soft)] p-3">
+        {chatMessages.length > 0 ? (
+          <div className="mb-2 flex justify-end">
+            <button
+              type="button"
+              onClick={() =>
+                clearChat().catch((caughtError) =>
+                  flash(errorMessage(caughtError), 'error')
+                )
+              }
+              className="rounded-[var(--radius)] px-2 py-1 text-[12px] text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--ink)] active:scale-[0.98]"
+            >
+              Clear chat
+            </button>
+          </div>
+        ) : null}
         <div className="flex gap-2 rounded-[var(--radius)] border border-[var(--line)] bg-[var(--paper)] p-1.5 focus-within:border-[var(--accent)]">
           <input
             value={askInput}

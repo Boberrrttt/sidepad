@@ -71,11 +71,13 @@ type NoteEditorProps = {
   status: string;
   statusKind: 'neutral' | 'ok' | 'error';
   isChatCollapsed: boolean;
+  isSidebarCollapsed: boolean;
   onTitleChange: (title: string) => void;
   onCommitTitle: () => Promise<void>;
   onBodyChange: (body: string) => void;
   onScheduleSave: () => void;
   onOpenAsk: () => void;
+  onOpenSidebar: () => void;
   onRequestDelete: () => void;
   onCreateNote: () => void;
 };
@@ -90,11 +92,13 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
       status,
       statusKind,
       isChatCollapsed,
+      isSidebarCollapsed,
       onTitleChange,
       onCommitTitle,
       onBodyChange,
       onScheduleSave,
       onOpenAsk,
+      onOpenSidebar,
       onRequestDelete,
       onCreateNote,
     } = props;
@@ -146,42 +150,66 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
             <p className="mt-3 text-sm leading-relaxed text-[var(--mute)]">
               Create a note or open one from the list. Writing saves as you go.
             </p>
-            <button
-              type="button"
-              onClick={onCreateNote}
-              className="mt-5 rounded-[var(--radius)] bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent-press)] active:scale-[0.98]"
-            >
-              New note
-            </button>
+            <div className="mt-5 flex items-center justify-center gap-2">
+              {isSidebarCollapsed ? (
+                <button
+                  type="button"
+                  onClick={onOpenSidebar}
+                  className="rounded-[var(--radius)] px-3.5 py-2.5 text-sm font-medium text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--ink)] active:scale-[0.98]"
+                >
+                  ‹ Notes
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={onCreateNote}
+                className="rounded-[var(--radius)] bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent-press)] active:scale-[0.98]"
+              >
+                New note
+              </button>
+            </div>
           </div>
         ) : (
           <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-6 py-5">
-            <div className="flex items-start gap-3">
-              <input
-                value={title}
-                onChange={(event) => onTitleChange(event.target.value)}
-                onBlur={() => {
-                  void onCommitTitle();
-                }}
-                onKeyDown={(event) => {
-                  if (event.key !== 'Enter') return;
-                  event.preventDefault();
-                  void onCommitTitle().then(() => bodyRef.current?.focus());
-                }}
-                placeholder="Untitled"
-                aria-label="Note title"
-                className="min-w-0 flex-1 border-0 bg-transparent text-[28px] font-semibold leading-tight tracking-tight text-[var(--ink)] outline-none placeholder:text-[var(--mute)]"
-              />
-              {isChatCollapsed ? (
-                <button
-                  type="button"
-                  onClick={onOpenAsk}
-                  className="shrink-0 rounded-[var(--radius)] bg-[var(--accent)] px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[var(--accent-press)] active:scale-[0.98]"
-                >
-                  Ask
-                </button>
-              ) : null}
-            </div>
+            {isSidebarCollapsed || isChatCollapsed ? (
+              <div className="mb-3 flex items-center gap-2">
+                {isSidebarCollapsed ? (
+                  <button
+                    type="button"
+                    aria-label="Show notes"
+                    onClick={onOpenSidebar}
+                    className="shrink-0 rounded-[var(--radius)] px-2.5 py-1.5 text-[13px] font-medium text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--ink)] active:scale-[0.98]"
+                  >
+                    ‹ Notes
+                  </button>
+                ) : null}
+                {isChatCollapsed ? (
+                  <button
+                    type="button"
+                    aria-label="Show ask"
+                    onClick={onOpenAsk}
+                    className="ml-auto shrink-0 rounded-[var(--radius)] bg-[var(--accent-soft)] px-2.5 py-1.5 text-[13px] font-medium text-[var(--accent)] transition-colors hover:bg-[color-mix(in_oklab,var(--accent)_22%,var(--accent-soft))] active:scale-[0.98]"
+                  >
+                    Ask ›
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            <input
+              value={title}
+              onChange={(event) => onTitleChange(event.target.value)}
+              onBlur={() => {
+                void onCommitTitle();
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter') return;
+                event.preventDefault();
+                void onCommitTitle().then(() => bodyRef.current?.focus());
+              }}
+              placeholder="Untitled"
+              aria-label="Note title"
+              className="min-w-0 w-full border-0 bg-transparent text-[28px] font-semibold leading-tight tracking-tight text-[var(--ink)] outline-none placeholder:text-[var(--mute)]"
+            />
 
             <div className="mt-4 flex items-center justify-between border-b border-[var(--line-soft)] pb-2">
               <div className="flex gap-0.5" role="toolbar" aria-label="Format">
