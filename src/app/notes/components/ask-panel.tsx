@@ -1,6 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { nearBottom } from '@/app/notes/helpers/near-bottom';
+import { toHtml } from '@/app/notes/helpers/markdown';
 import {
   clearChatLocal,
   getChatLocal,
@@ -9,6 +11,8 @@ import {
 } from '@/client/sync.api';
 import { errorMessage } from '@/shared/errors';
 import type { AskEvent, ChatMessage } from '@/shared/types';
+
+const PROMPTS = ['Summarize this note', 'Rewrite more clearly', 'Fill in gaps'];
 
 type AskPanelProps = {
   current: string | null;
@@ -38,7 +42,11 @@ export function AskPanel({
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [askInput, setAskInput] = useState('');
   const [isAsking, setIsAsking] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
+  const [panelStatus, setPanelStatus] = useState<string | null>(null);
+  const [liveSteps, setLiveSteps] = useState<string[]>([]);
   const chatLogRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   const loadChat = useCallback(async (name: string | null) => {
     if (!name) {
@@ -57,17 +65,30 @@ export function AskPanel({
 
   useEffect(() => {
     void loadChat(current);
+    setLiveSteps([]);
+    setPanelStatus(null);
   }, [current, loadChat]);
+
+  function scrollChatIfNeeded() {
+    const element = chatLogRef.current;
+    if (!element || !nearBottom(element)) return;
+    element.scrollTop = element.scrollHeight;
+  }
 
   async function clearChat() {
     if (!current || isAsking) return;
 
     await clearChatLocal(current);
     setChatMessages([]);
-    flash('Chat cleared', 'ok');
+    setLiveSteps([]);
+    setPanelStatus(null);
   }
 
-  async function askCurrent() {
+  function stopAsk() {
+    abortRef.current?.abort();
+  }
+
+  async function askCurrent(override?: string, regenerate = false) {
     if (!current || isAsking) return;
 
     if (!navigator.onLine) {
@@ -75,21 +96,31 @@ export function AskPanel({
       return;
     }
 
-    const message = askInput.trim();
+    const message = (override ?? askInput).trim();
 
     if (!message) {
-      flash('Enter a question', 'error');
+      setPanelStatus('Enter a question');
       return;
     }
 
+    const abortController = new AbortController();
+    abortRef.current = abortController;
+
     setIsAsking(true);
-    setAskInput('');
-    setChatMessages((previous) => [...previous, { role: 'user', content: message }]);
-    setChatMessages((previous) => [
-      ...previous,
-      { role: 'assistant', content: 'Thinking…' },
-    ]);
-    flash('Asking…');
+    setIsThinking(true);
+    setPanelStatus('Asking…');
+    setLiveSteps([]);
+
+    if (regenerate) {
+      setChatMessages((previous) => {
+        const next = [...previous];
+        if (next[next.length - 1]?.role === 'assistant') next.pop();
+        return next;
+      });
+    } else {
+      setAskInput('');
+      setChatMessages((previous) => [...previous, { role: 'user', content: message }]);
+    }
 
     let hasStarted = false;
 
@@ -100,6 +131,7 @@ export function AskPanel({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: current, message }),
+        signal: abortController.signal,
       });
 
       if (!response.ok || !response.body) throw new Error(await response.text());
@@ -122,35 +154,37 @@ export function AskPanel({
           const askEvent = JSON.parse(line) as AskEvent;
 
           if (askEvent.type === 'chunk') {
-            setChatMessages((previous) => {
-              const next = [...previous];
-              const last = next[next.length - 1];
+            if (!hasStarted) {
+              hasStarted = true;
+              setIsThinking(false);
+              setChatMessages((previous) => [
+                ...previous,
+                { role: 'assistant', content: askEvent.text },
+              ]);
+            } else {
+              setChatMessages((previous) => {
+                const next = [...previous];
+                const last = next[next.length - 1];
 
-              if (!hasStarted) {
-                hasStarted = true;
-                next[next.length - 1] = {
-                  role: 'assistant',
-                  content: askEvent.text,
-                };
-              } else if (last?.role === 'assistant') {
-                next[next.length - 1] = {
-                  role: 'assistant',
-                  content: String(last.content || '') + askEvent.text,
-                };
-              }
+                if (last?.role === 'assistant') {
+                  next[next.length - 1] = {
+                    role: 'assistant',
+                    content: String(last.content || '') + askEvent.text,
+                  };
+                }
 
-              return next;
-            });
+                return next;
+              });
+            }
 
-            requestAnimationFrame(() => {
-              if (chatLogRef.current) {
-                chatLogRef.current.scrollTop = chatLogRef.current.scrollHeight;
-              }
-            });
+            requestAnimationFrame(scrollChatIfNeeded);
           } else if (askEvent.type === 'note_write') {
+            setPanelStatus('Writing note…');
+            setLiveSteps((previous) => [...previous, 'Updated note']);
             await onNoteWrite(askEvent.body);
             await mirrorNoteFromServer(current, askEvent.body, askEvent.mtime);
             await refreshList();
+            requestAnimationFrame(scrollChatIfNeeded);
           } else if (askEvent.type === 'error') {
             throw new Error(askEvent.message);
           }
@@ -159,17 +193,57 @@ export function AskPanel({
 
       await syncAll();
       await loadChat(current);
-      flash('Reply ready', 'ok');
+      setPanelStatus(null);
     } catch (caughtError) {
-      if (!hasStarted) {
-        setChatMessages((previous) => previous.slice(0, -1));
+      if (abortController.signal.aborted) {
+        setPanelStatus('Stopped');
+        setIsThinking(false);
+        return;
       }
 
+      if (!hasStarted && !regenerate) {
+        setChatMessages((previous) =>
+          previous[previous.length - 1]?.role === 'user'
+            ? previous.slice(0, -1)
+            : previous
+        );
+      }
+
+      setPanelStatus(errorMessage(caughtError));
       flash(errorMessage(caughtError), 'error');
     } finally {
+      setIsThinking(false);
       setIsAsking(false);
+      abortRef.current = null;
     }
   }
+
+  function regenerateLast() {
+    const lastUser = [...chatMessages]
+      .reverse()
+      .find((chatMessage) => chatMessage.role === 'user');
+
+    if (!lastUser?.content) return;
+
+    askCurrent(String(lastUser.content), true).catch((caughtError) =>
+      flash(errorMessage(caughtError), 'error')
+    );
+  }
+
+  async function copyMessage(content: string) {
+    try {
+      await navigator.clipboard.writeText(content);
+      setPanelStatus('Copied');
+    } catch {
+      flash('Copy failed', 'error');
+    }
+  }
+
+  const lastAssistantIndex = chatMessages.reduce(
+    (foundIndex, chatMessage, messageIndex) =>
+      chatMessage.role === 'assistant' ? messageIndex : foundIndex,
+    -1
+  );
 
   return (
     <aside
@@ -183,7 +257,14 @@ export function AskPanel({
       aria-label="Note chat"
     >
       <div className="flex items-start justify-between gap-2 px-4 pb-3 pt-5">
-        <p className="m-0 pt-1 text-[15px] font-semibold tracking-tight text-[var(--ink)]">Ask</p>
+        <div className="min-w-0">
+          <p className="m-0 pt-1 text-[15px] font-semibold tracking-tight text-[var(--ink)]">
+            Ask
+          </p>
+          {current ? (
+            <p className="m-0 mt-0.5 truncate text-[12px] text-[var(--mute)]">{current}</p>
+          ) : null}
+        </div>
         <button
           type="button"
           aria-label="Hide ask"
@@ -201,76 +282,176 @@ export function AskPanel({
               Open a note to ask about it.
             </p>
           </div>
-        ) : chatMessages.length === 0 ? (
-          <div className="flex h-full min-h-[12rem] flex-col items-center justify-center px-2 text-center">
-            <p className="m-0 text-[15px] font-medium tracking-tight text-[var(--ink-soft)]">
-              Ready when you are
-            </p>
-            <p className="mt-2 m-0 max-w-[22ch] text-[13px] leading-relaxed text-[var(--mute)]">
-              Ask to rewrite, summarize, or fill gaps in this note.
-            </p>
+        ) : chatMessages.length === 0 && !isThinking ? (
+          <div className="flex h-full min-h-[12rem] flex-col items-center justify-center gap-3 px-2 text-center">
+            <div>
+              <p className="m-0 text-[15px] font-medium tracking-tight text-[var(--ink-soft)]">
+                Ready when you are
+              </p>
+              <p className="mt-2 m-0 max-w-[22ch] text-[13px] leading-relaxed text-[var(--mute)]">
+                Ask to rewrite, summarize, or fill gaps in this note.
+              </p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  disabled={!isOnline || isAsking}
+                  onClick={() =>
+                    askCurrent(prompt).catch((caughtError) =>
+                      flash(errorMessage(caughtError), 'error')
+                    )
+                  }
+                  className="rounded-[var(--radius)] border border-[var(--line)] bg-[var(--paper)] px-2.5 py-1 text-[12px] text-[var(--ink-soft)] transition-colors hover:border-[var(--accent)] hover:text-[var(--ink)] disabled:opacity-50"
+                >
+                  {prompt}
+                </button>
+              ))}
+            </div>
           </div>
         ) : (
           <div className="flex flex-col gap-2.5 py-3">
-            {chatMessages.map((chatMessage, messageIndex) => (
+            {chatMessages.map((chatMessage, messageIndex) => {
+              const content = String(chatMessage.content || '');
+              const isUser = chatMessage.role === 'user';
+              const isLastAssistant = messageIndex === lastAssistantIndex;
+              const showCaret = isAsking && isLastAssistant && !isThinking && !isUser;
+
+              return (
+                <div
+                  key={messageIndex}
+                  className={`group flex max-w-[92%] flex-col gap-1 ${
+                    isUser ? 'ml-auto items-end' : 'mr-auto items-start'
+                  }`}
+                >
+                  <div
+                    className={`px-3 py-2 text-sm leading-relaxed ${
+                      isUser
+                        ? 'rounded-[var(--radius)] rounded-br-sm bg-[var(--accent-soft)] text-[var(--forest)]'
+                        : 'rounded-[var(--radius)] rounded-bl-sm bg-[var(--paper)] text-[var(--ink)]'
+                    }`}
+                  >
+                    {isUser ? (
+                      content
+                    ) : (
+                      <div className="note-preview [&_*:first-child]:mt-0 [&_*:last-child]:mb-0">
+                        <span dangerouslySetInnerHTML={{ __html: toHtml(content) }} />
+                        {showCaret ? (
+                          <span className="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse bg-current align-text-bottom" />
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                  {!isUser && content ? (
+                    <div className="flex gap-2 px-1">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          copyMessage(content).catch((caughtError) =>
+                            flash(errorMessage(caughtError), 'error')
+                          )
+                        }
+                        className="text-[11px] text-[var(--mute)] transition-colors hover:text-[var(--ink)]"
+                      >
+                        Copy
+                      </button>
+                      {isLastAssistant && !isAsking ? (
+                        <button
+                          type="button"
+                          disabled={!isOnline}
+                          onClick={regenerateLast}
+                          className="text-[11px] text-[var(--mute)] transition-colors hover:text-[var(--ink)] disabled:opacity-50"
+                        >
+                          Regenerate
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+
+            {liveSteps.map((step, stepIndex) => (
               <div
-                key={messageIndex}
-                className={`max-w-[92%] px-3 py-2 text-sm leading-relaxed ${
-                  chatMessage.role === 'user'
-                    ? 'ml-auto rounded-[var(--radius)] rounded-br-sm bg-[var(--accent-soft)] text-[var(--forest)]'
-                    : 'mr-auto rounded-[var(--radius)] rounded-bl-sm bg-[var(--paper)] text-[var(--ink)]'
-                } ${chatMessage.content === 'Thinking…' ? 'italic text-[var(--mute)]' : ''}`}
+                key={`step-${stepIndex}`}
+                className="mr-auto rounded-[var(--radius)] border border-[var(--line-soft)] px-2.5 py-1 text-[12px] text-[var(--mute)]"
               >
-                {chatMessage.content}
+                {step}
               </div>
             ))}
+
+            {isThinking ? (
+              <div className="mr-auto rounded-[var(--radius)] rounded-bl-sm bg-[var(--paper)] px-3 py-2 text-sm text-[var(--mute)]">
+                <span className="inline-flex gap-1">
+                  <span className="animate-pulse">·</span>
+                  <span className="animate-pulse [animation-delay:150ms]">·</span>
+                  <span className="animate-pulse [animation-delay:300ms]">·</span>
+                </span>
+              </div>
+            ) : null}
           </div>
         )}
       </div>
 
       <div className="border-t border-[var(--line-soft)] p-3">
+        {panelStatus ? (
+          <p className="mb-2 m-0 text-[12px] text-[var(--mute)]">{panelStatus}</p>
+        ) : null}
         {chatMessages.length > 0 ? (
           <div className="mb-2 flex justify-end">
             <button
               type="button"
+              disabled={isAsking}
               onClick={() =>
                 clearChat().catch((caughtError) =>
                   flash(errorMessage(caughtError), 'error')
                 )
               }
-              className="rounded-[var(--radius)] px-2 py-1 text-[12px] text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--ink)] active:scale-[0.98]"
+              className="rounded-[var(--radius)] px-2 py-1 text-[12px] text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--ink)] active:scale-[0.98] disabled:opacity-50"
             >
               Clear chat
             </button>
           </div>
         ) : null}
         <div className="flex gap-2 rounded-[var(--radius)] border border-[var(--line)] bg-[var(--paper)] p-1.5 focus-within:border-[var(--accent)]">
-          <input
+          <textarea
             value={askInput}
+            rows={1}
             disabled={isAsking || isEmpty || !isOnline}
             onChange={(event) => setAskInput(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key !== 'Enter') return;
+              if (event.key !== 'Enter' || event.shiftKey) return;
               event.preventDefault();
               askCurrent().catch((caughtError) =>
                 flash(errorMessage(caughtError), 'error')
               );
             }}
             placeholder={isOnline ? 'Ask about this note' : 'Needs network'}
-            className="min-w-0 flex-1 border-0 bg-transparent px-2 py-1.5 text-sm outline-none disabled:opacity-60"
+            className="max-h-28 min-h-[2.25rem] min-w-0 flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm outline-none disabled:opacity-60"
           />
-          <button
-            type="button"
-            disabled={isAsking || isEmpty || !isOnline}
-            onClick={() =>
-              askCurrent().catch((caughtError) =>
-                flash(errorMessage(caughtError), 'error')
-              )
-            }
-            className="shrink-0 rounded-[calc(var(--radius)-2px)] bg-[var(--accent)] px-3.5 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--accent-press)] active:scale-[0.98] disabled:opacity-50"
-          >
-            Ask
-          </button>
+          {isAsking ? (
+            <button
+              type="button"
+              onClick={stopAsk}
+              className="shrink-0 self-end rounded-[calc(var(--radius)-2px)] bg-[var(--ink-soft)] px-3.5 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--ink)] active:scale-[0.98]"
+            >
+              Stop
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={isEmpty || !isOnline}
+              onClick={() =>
+                askCurrent().catch((caughtError) =>
+                  flash(errorMessage(caughtError), 'error')
+                )
+              }
+              className="shrink-0 self-end rounded-[calc(var(--radius)-2px)] bg-[var(--accent)] px-3.5 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--accent-press)] active:scale-[0.98] disabled:opacity-50"
+            >
+              Ask
+            </button>
+          )}
         </div>
       </div>
     </aside>
