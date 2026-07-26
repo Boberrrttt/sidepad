@@ -30,6 +30,8 @@ function htmlToMd(root: HTMLElement): string {
     if (tag === 'strong' || tag === 'b') return `**${childMarkdown()}**`;
     if (tag === 'em' || tag === 'i') return `*${childMarkdown()}*`;
     if (tag === 'u') return `<u>${childMarkdown()}</u>`;
+    if (tag === 's' || tag === 'strike' || tag === 'del')
+      return `~~${childMarkdown()}~~`;
     if (tag === 'code') {
       return element.parentElement?.tagName.toLowerCase() === 'pre'
         ? childMarkdown()
@@ -218,6 +220,8 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
                     ['bold', 'B'],
                     ['italic', 'I'],
                     ['underline', 'U'],
+                    ['strikeThrough', 'S'],
+                    ['insertUnorderedList', '•'],
                   ] as const
                 ).map(([command, label]) => (
                   <button
@@ -225,7 +229,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
                     type="button"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={() => format(command)}
-                    className="h-8 min-w-8 rounded-lg px-2 text-sm font-semibold text-[var(--ink-soft)] transition-colors hover:bg-[var(--line-soft)] active:scale-[0.98]"
+                    className={`h-8 min-w-8 rounded-lg px-2 text-sm font-semibold text-[var(--ink-soft)] transition-colors hover:bg-[var(--line-soft)] active:scale-[0.98]${command === 'strikeThrough' ? ' line-through' : ''}`}
                   >
                     {label}
                   </button>

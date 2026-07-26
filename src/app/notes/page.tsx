@@ -40,9 +40,17 @@ export default function SidePad() {
   const currentRef = useRef<string | null>(null);
   const bodyValueRef = useRef('');
   const editorRef = useRef<NoteEditorHandle>(null);
+  const noteOpRef = useRef(Promise.resolve());
+  const committingTitleRef = useRef(false);
 
   currentRef.current = current;
   bodyValueRef.current = body;
+
+  function runNoteOp(work: () => Promise<void>) {
+    const next = noteOpRef.current.then(work, work);
+    noteOpRef.current = next.catch(() => {});
+    return next;
+  }
 
   const flash = useCallback(
     (message: string, kind: 'neutral' | 'ok' | 'error' = 'neutral') => {
@@ -76,15 +84,20 @@ export default function SidePad() {
     const name = currentRef.current;
     if (!name) return;
 
-    await writeNoteLocal(name, bodyValueRef.current);
-    await refreshList();
-    flash('Saved', 'ok');
+    const bodySnapshot = bodyValueRef.current;
+
+    await runNoteOp(async () => {
+      flash('Saving...');
+      await writeNoteLocal(name, bodySnapshot);
+      await refreshList();
+      flash('Saved', 'ok');
+    });
   }, [flash, refreshList]);
 
   const scheduleSave = useCallback(() => {
     if (saveTimer.current) clearTimeout(saveTimer.current);
 
-    flash('Saving…');
+    flash('Saving...');
     saveTimer.current = setTimeout(() => {
       saveCurrent().catch((caughtError) =>
         flash(errorMessage(caughtError), 'error')
@@ -205,40 +218,56 @@ export default function SidePad() {
       name = `New Note ${suffix}`;
     }
 
-    await writeNoteLocal(name, '');
-    setCurrent(name);
-    setTitle(name);
-    setBody('');
-    flash('Created', 'ok');
-    await refreshList();
-    await editorRef.current?.fill('');
+    await runNoteOp(async () => {
+      await writeNoteLocal(name, '');
+      setCurrent(name);
+      setTitle(name);
+      setBody('');
+      flash('Created', 'ok');
+      await refreshList();
+      await editorRef.current?.fill('');
+    });
   }
 
   async function commitTitle() {
-    const name = title.trim().replace(/\.md$/i, '');
+    if (committingTitleRef.current) return;
+    committingTitleRef.current = true;
 
-    if (!name) {
-      setTitle(current || '');
-      return;
+    try {
+      const name = title.trim().replace(/\.md$/i, '');
+
+      if (!name) {
+        setTitle(current || '');
+        return;
+      }
+
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+
+      await runNoteOp(async () => {
+        const from = currentRef.current;
+
+        if (!from) {
+          flash('Saving...');
+          await writeNoteLocal(name, bodyValueRef.current);
+          setCurrent(name);
+          flash('Created', 'ok');
+        } else if (name !== from) {
+          flash('Saving...');
+          await writeNoteLocal(from, bodyValueRef.current);
+          const next = await renameNoteLocal(from, name);
+          setCurrent(next);
+          setTitle(next);
+          flash('Renamed', 'ok');
+        }
+
+        await refreshList();
+      });
+    } finally {
+      committingTitleRef.current = false;
     }
-
-    if (saveTimer.current) {
-      clearTimeout(saveTimer.current);
-      saveTimer.current = null;
-    }
-
-    if (!current) {
-      await writeNoteLocal(name, body);
-      setCurrent(name);
-      flash('Created', 'ok');
-    } else if (name !== current) {
-      const next = await renameNoteLocal(current, name);
-      setCurrent(next);
-      setTitle(next);
-      flash('Renamed', 'ok');
-    }
-
-    await refreshList();
   }
 
   async function deleteNoteByName(name: string) {
