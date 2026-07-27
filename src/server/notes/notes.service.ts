@@ -14,14 +14,24 @@ export async function writeNote(
   userId: string,
   name: string,
   body: string,
-  mtime: number
+  mtime: number,
+  board?: string
 ): Promise<Note> {
   const noteName = safeName(name);
   const existing = await notesRepo.readNote(userId, noteName);
 
   if (existing && existing.mtime > mtime) return existing;
 
-  await notesRepo.upsertNote(userId, noteName, String(body ?? ''), mtime);
+  const nextBoard =
+    board !== undefined ? String(board) : String(existing?.board ?? '');
+
+  await notesRepo.upsertNote(
+    userId,
+    noteName,
+    String(body ?? ''),
+    nextBoard,
+    mtime
+  );
   return (await notesRepo.readNote(userId, noteName))!;
 }
 

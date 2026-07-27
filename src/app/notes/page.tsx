@@ -10,14 +10,19 @@ import {
 } from 'react';
 import { AskPanel } from '@/app/notes/components/ask-panel';
 import { NoteEditor, type NoteEditorHandle } from '@/app/notes/components/note-editor';
+import { parseBoard } from '@/app/notes/components/kanban-board';
+import { getMe, logout as logoutSession } from '@/app/auth/api';
 import {
   deleteNoteLocal,
   listNotesLocal,
   renameNoteLocal,
   syncAll,
   writeNoteLocal,
-} from '@/client/sync.api';
-import { clearLocalUserId, setLocalUserId } from '@/client/local';
+} from '@/app/notes/sync/api';
+import {
+  clearLocalUserId,
+  setLocalUserId,
+} from '@/app/shared/local-user';
 import { errorMessage } from '@/shared/errors';
 import type { Note } from '@/shared/types';
 
@@ -26,6 +31,7 @@ export default function SidePad() {
   const [current, setCurrent] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [board, setBoard] = useState('');
   const [status, setStatus] = useState('Ready');
   const [statusKind, setStatusKind] = useState<'neutral' | 'ok' | 'error'>('neutral');
   const [search, setSearch] = useState('');
@@ -39,12 +45,14 @@ export default function SidePad() {
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentRef = useRef<string | null>(null);
   const bodyValueRef = useRef('');
+  const boardValueRef = useRef('');
   const editorRef = useRef<NoteEditorHandle>(null);
   const noteOpRef = useRef(Promise.resolve());
   const committingTitleRef = useRef(false);
 
   currentRef.current = current;
   bodyValueRef.current = body;
+  boardValueRef.current = board;
 
   function runNoteOp(work: () => Promise<void>) {
     const next = noteOpRef.current.then(work, work);
@@ -68,13 +76,21 @@ export default function SidePad() {
     async (name: string) => {
       const notes = await listNotesLocal();
       const note = notes.find((entry) => entry.name === name);
-      const nextBody = note?.body ?? '';
+      let nextBody = note?.body ?? '';
+      let nextBoard = note?.board ?? '';
+
+      if (!nextBoard && parseBoard(nextBody)) {
+        nextBoard = nextBody;
+        nextBody = '';
+        await writeNoteLocal(name, nextBody, nextBoard);
+      }
 
       setCurrent(name);
       setTitle(name);
       setBody(nextBody);
+      setBoard(nextBoard);
       flash('Editing');
-      setAllNotes(notes);
+      setAllNotes(await listNotesLocal());
       await editorRef.current?.fill(nextBody);
     },
     [flash]
@@ -85,10 +101,11 @@ export default function SidePad() {
     if (!name) return;
 
     const bodySnapshot = bodyValueRef.current;
+    const boardSnapshot = boardValueRef.current;
 
     await runNoteOp(async () => {
       flash('Saving...');
-      await writeNoteLocal(name, bodySnapshot);
+      await writeNoteLocal(name, bodySnapshot, boardSnapshot);
       await refreshList();
       flash('Saved', 'ok');
     });
@@ -129,11 +146,8 @@ export default function SidePad() {
 
     (async () => {
       try {
-        const response = await fetch('/api/auth/me');
-        if (!response.ok) throw new Error('unauthorized');
-
-        const data = (await response.json()) as { userId: string };
-        setLocalUserId(data.userId);
+        const auth = await getMe();
+        setLocalUserId(auth.userId);
 
         if (navigator.onLine) await syncAll();
 
@@ -219,10 +233,11 @@ export default function SidePad() {
     }
 
     await runNoteOp(async () => {
-      await writeNoteLocal(name, '');
+      await writeNoteLocal(name, '', '');
       setCurrent(name);
       setTitle(name);
       setBody('');
+      setBoard('');
       flash('Created', 'ok');
       await refreshList();
       await editorRef.current?.fill('');
@@ -251,12 +266,20 @@ export default function SidePad() {
 
         if (!from) {
           flash('Saving...');
-          await writeNoteLocal(name, bodyValueRef.current);
+          await writeNoteLocal(
+            name,
+            bodyValueRef.current,
+            boardValueRef.current
+          );
           setCurrent(name);
           flash('Created', 'ok');
         } else if (name !== from) {
           flash('Saving...');
-          await writeNoteLocal(from, bodyValueRef.current);
+          await writeNoteLocal(
+            from,
+            bodyValueRef.current,
+            boardValueRef.current
+          );
           const next = await renameNoteLocal(from, name);
           setCurrent(next);
           setTitle(next);
@@ -278,6 +301,7 @@ export default function SidePad() {
       setCurrent(null);
       setTitle('');
       setBody('');
+      setBoard('');
     }
 
     flash('Deleted', 'ok');
@@ -291,7 +315,7 @@ export default function SidePad() {
 
   async function logout() {
     clearLocalUserId();
-    await fetch('/api/auth/logout', { method: 'POST' });
+    await logoutSession();
     window.location.href = '/auth/login';
   }
 
@@ -462,6 +486,7 @@ export default function SidePad() {
         current={current}
         title={title}
         body={body}
+        board={board}
         status={status}
         statusKind={statusKind}
         isChatCollapsed={isChatCollapsed}
@@ -475,6 +500,7 @@ export default function SidePad() {
           }
         }}
         onBodyChange={setBody}
+        onBoardChange={setBoard}
         onScheduleSave={scheduleSave}
         onOpenAsk={() => toggleChat(false)}
         onOpenSidebar={() => toggleSidebar(false)}

@@ -15,21 +15,23 @@ export async function GET() {
 export async function PUT(request: Request) {
   try {
     const userId = await requireUserId();
-    const body = (await request.json()) as {
+    const payload = (await request.json()) as {
       name?: string;
       body?: string;
+      board?: string;
       mtime?: number;
     };
 
-    if (!body.name || typeof body.mtime !== 'number') {
+    if (!payload.name || typeof payload.mtime !== 'number') {
       return NextResponse.json({ error: 'bad request' }, { status: 400 });
     }
 
     const note = await writeNote(
       userId,
-      body.name,
-      String(body.body ?? ''),
-      body.mtime
+      payload.name,
+      String(payload.body ?? ''),
+      payload.mtime,
+      payload.board !== undefined ? String(payload.board) : undefined
     );
 
     return NextResponse.json(note);

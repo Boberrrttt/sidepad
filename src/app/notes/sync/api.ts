@@ -12,7 +12,7 @@ import {
   removeOutbox,
   replaceAllLocal,
   rewriteOutboxForRename,
-} from '@/client/local';
+} from '@/app/notes/sync/local';
 import type { ChatMessage, Note } from '@/shared/types';
 
 async function pull(): Promise<void> {
@@ -40,6 +40,7 @@ async function flush(): Promise<void> {
         body: JSON.stringify({
           name: operation.name,
           body: operation.body,
+          board: operation.board ?? '',
           mtime: operation.mtime,
         }),
       });
@@ -93,11 +94,24 @@ export async function listNotesLocal(): Promise<Note[]> {
   return localListNotes();
 }
 
-export async function writeNoteLocal(name: string, body: string): Promise<Note> {
+export async function writeNoteLocal(
+  name: string,
+  body: string,
+  board?: string
+): Promise<Note> {
   const mtime = now();
-  const note = { name, body, mtime };
+  const existing = (await localListNotes()).find((note) => note.name === name);
+  const nextBoard = board !== undefined ? board : (existing?.board ?? '');
+  const note = { name, body, board: nextBoard, mtime };
   await localPutNote(note);
-  await enqueue({ id: newId(), kind: 'note_write', name, body, mtime });
+  await enqueue({
+    id: newId(),
+    kind: 'note_write',
+    name,
+    body,
+    board: nextBoard,
+    mtime,
+  });
   if (navigator.onLine) await syncAll().catch(() => {});
   return note;
 }
@@ -136,5 +150,10 @@ export async function mirrorNoteFromServer(
 ): Promise<void> {
   const local = (await localListNotes()).find((note) => note.name === name);
   if (local && local.mtime > mtime) return;
-  await localPutNote({ name, body, mtime });
+  await localPutNote({
+    name,
+    body,
+    board: local?.board ?? '',
+    mtime,
+  });
 }

@@ -7,7 +7,13 @@ import {
   useEffect,
   useImperativeHandle,
   useRef,
+  useState,
 } from 'react';
+import { ConnectAppsModal } from '@/app/notes/components/connect-apps-modal';
+import {
+  KanbanBoard,
+  parseBoard,
+} from '@/app/notes/components/kanban-board';
 import { htmlToMd } from '@/app/notes/helpers/markdown';
 import { wordCount } from '@/app/notes/helpers/word-count';
 
@@ -20,6 +26,7 @@ type NoteEditorProps = {
   current: string | null;
   title: string;
   body: string;
+  board: string;
   status: string;
   statusKind: 'neutral' | 'ok' | 'error';
   isChatCollapsed: boolean;
@@ -27,6 +34,7 @@ type NoteEditorProps = {
   onTitleChange: (title: string) => void;
   onCommitTitle: () => Promise<void>;
   onBodyChange: (body: string) => void;
+  onBoardChange: (board: string) => void;
   onScheduleSave: () => void;
   onOpenAsk: () => void;
   onOpenSidebar: () => void;
@@ -41,6 +49,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
       current,
       title,
       body,
+      board,
       status,
       statusKind,
       isChatCollapsed,
@@ -48,6 +57,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
       onTitleChange,
       onCommitTitle,
       onBodyChange,
+      onBoardChange,
       onScheduleSave,
       onOpenAsk,
       onOpenSidebar,
@@ -57,6 +67,9 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
 
     const bodyRef = useRef<HTMLDivElement>(null);
     const editorGeneration = useRef(0);
+    const [viewMode, setViewMode] = useState<'note' | 'board'>('note');
+    const [connectOpen, setConnectOpen] = useState(false);
+    const [boardSyncKey, setBoardSyncKey] = useState(0);
 
     const fill = useCallback(async (markdown: string) => {
       const element = bodyRef.current;
@@ -74,8 +87,13 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
 
     useEffect(() => {
       if (!current) return;
+      setViewMode(parseBoard(board) ? 'board' : 'note');
+    }, [current]);
+
+    useEffect(() => {
+      if (!current || viewMode !== 'note') return;
       void fill(body);
-    }, [current, fill]);
+    }, [viewMode, current, fill]);
 
     function onEditorInput() {
       const element = bodyRef.current;
@@ -122,7 +140,11 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
             </div>
           </div>
         ) : (
-          <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-6 py-5">
+          <div
+            className={`mx-auto flex min-h-0 w-full flex-1 flex-col px-6 py-5 ${
+              viewMode === 'board' ? 'max-w-none' : 'max-w-3xl'
+            }`}
+          >
             {isSidebarCollapsed || isChatCollapsed ? (
               <div className="mb-3 flex items-center gap-2">
                 {isSidebarCollapsed ? (
@@ -147,56 +169,106 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
                 ) : null}
               </div>
             ) : null}
-            <input
-              value={title}
-              onChange={(event) => onTitleChange(event.target.value)}
-              onBlur={() => {
-                void onCommitTitle();
-              }}
-              onKeyDown={(event) => {
-                if (event.key !== 'Enter') return;
-                event.preventDefault();
-                void onCommitTitle().then(() => bodyRef.current?.focus());
-              }}
-              placeholder="Untitled"
-              aria-label="Note title"
-              className="min-w-0 w-full border-0 bg-transparent text-[28px] font-semibold leading-tight tracking-tight text-[var(--ink)] outline-none placeholder:text-[var(--mute)]"
-            />
-
-            <div className="mt-4 flex items-center justify-between border-b border-[var(--line-soft)] pb-2">
-              <div className="flex gap-0.5" role="toolbar" aria-label="Format">
-                {(
-                  [
-                    ['bold', 'B'],
-                    ['italic', 'I'],
-                    ['underline', 'U'],
-                    ['strikeThrough', 'S'],
-                    ['insertUnorderedList', '•'],
-                  ] as const
-                ).map(([command, label]) => (
+            <div className="flex min-w-0 items-start gap-3">
+              <input
+                value={title}
+                onChange={(event) => onTitleChange(event.target.value)}
+                onBlur={() => {
+                  void onCommitTitle();
+                }}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter') return;
+                  event.preventDefault();
+                  void onCommitTitle().then(() => bodyRef.current?.focus());
+                }}
+                placeholder="Untitled"
+                aria-label="Note title"
+                className="min-w-0 flex-1 border-0 bg-transparent text-[28px] font-semibold leading-tight tracking-tight text-[var(--ink)] outline-none placeholder:text-[var(--mute)]"
+              />
+              <div className="mt-1 flex shrink-0 items-center gap-2">
+                {viewMode === 'board' ? (
                   <button
-                    key={command}
                     type="button"
-                    onMouseDown={(event) => event.preventDefault()}
-                    onClick={() => format(command)}
-                    className={`h-8 min-w-8 rounded-lg px-2 text-sm font-semibold text-[var(--ink-soft)] transition-colors hover:bg-[var(--line-soft)] active:scale-[0.98]${command === 'strikeThrough' ? ' line-through' : ''}`}
+                    onClick={() => setConnectOpen(true)}
+                    className="rounded-md px-2.5 py-1 text-[13px] font-medium text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--ink)] active:scale-[0.98]"
                   >
-                    {label}
+                    Connect
                   </button>
-                ))}
+                ) : null}
+                <div
+                  className="flex rounded-lg border border-[var(--line-soft)] p-0.5"
+                  role="group"
+                  aria-label="View mode"
+                >
+                  {(
+                    [
+                      ['note', 'Note'],
+                      ['board', 'Board'],
+                    ] as const
+                  ).map(([mode, label]) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setViewMode(mode)}
+                      className={`rounded-md px-2.5 py-1 text-[13px] font-medium transition-colors active:scale-[0.98] ${
+                        viewMode === mode
+                          ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                          : 'text-[var(--mute)] hover:text-[var(--ink)]'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
-            <div
-              ref={bodyRef}
-              contentEditable
-              role="textbox"
-              aria-multiline="true"
-              aria-label="Note body"
-              data-placeholder="Start writing"
-              className="note-preview note-editor mt-3 min-h-0 flex-1 overflow-auto bg-transparent py-1 text-[15px] leading-relaxed outline-none"
-              onInput={onEditorInput}
-            />
+            {viewMode === 'note' ? (
+              <>
+                <div className="mt-4 flex items-center justify-between border-b border-[var(--line-soft)] pb-2">
+                  <div className="flex gap-0.5" role="toolbar" aria-label="Format">
+                    {(
+                      [
+                        ['bold', 'B'],
+                        ['italic', 'I'],
+                        ['underline', 'U'],
+                        ['strikeThrough', 'S'],
+                        ['insertUnorderedList', '•'],
+                      ] as const
+                    ).map(([command, label]) => (
+                      <button
+                        key={command}
+                        type="button"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => format(command)}
+                        className={`h-8 min-w-8 rounded-lg px-2 text-sm font-semibold text-[var(--ink-soft)] transition-colors hover:bg-[var(--line-soft)] active:scale-[0.98]${command === 'strikeThrough' ? ' line-through' : ''}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div
+                  ref={bodyRef}
+                  contentEditable
+                  role="textbox"
+                  aria-multiline="true"
+                  aria-label="Note body"
+                  data-placeholder="Start writing"
+                  className="note-preview note-editor mt-3 min-h-0 flex-1 overflow-auto bg-transparent py-1 text-[15px] leading-relaxed outline-none"
+                  onInput={onEditorInput}
+                />
+              </>
+            ) : (
+              <KanbanBoard
+                key={`${current}-${boardSyncKey}`}
+                projectLabel={title}
+                boardJson={board}
+                onBoardChange={onBoardChange}
+                onScheduleSave={onScheduleSave}
+              />
+            )}
 
             <div className="mt-3 flex items-center justify-between gap-3 border-t border-[var(--line-soft)] pt-3">
               <p
@@ -211,9 +283,11 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
                 {status}
               </p>
               <div className="flex items-center gap-1">
-                <p className="m-0 mr-2 text-sm tabular-nums text-[var(--mute)]">
-                  {words === 1 ? '1 word' : `${words} words`}
-                </p>
+                {viewMode === 'note' ? (
+                  <p className="m-0 mr-2 text-sm tabular-nums text-[var(--mute)]">
+                    {words === 1 ? '1 word' : `${words} words`}
+                  </p>
+                ) : null}
                 <button
                   type="button"
                   onClick={onRequestDelete}
@@ -225,7 +299,20 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
             </div>
           </div>
         )}
+
+        <ConnectAppsModal
+          open={connectOpen}
+          onClose={() => setConnectOpen(false)}
+          onBoardSynced={(boardJson) => {
+            onBoardChange(boardJson);
+            onScheduleSave();
+            setBoardSyncKey((value) => value + 1);
+            setViewMode('board');
+            setConnectOpen(false);
+          }}
+        />
       </main>
     );
   }
 );
+

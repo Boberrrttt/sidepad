@@ -2,7 +2,8 @@
 
 import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { setLocalUserId } from '@/client/local';
+import { login, register } from '@/app/auth/api';
+import { setLocalUserId } from '@/app/shared/local-user';
 import { errorMessage } from '@/shared/errors';
 
 export default function LoginPage() {
@@ -20,24 +21,12 @@ export default function LoginPage() {
     setError('');
 
     try {
-      const response = await fetch(
-        mode === 'login' ? '/api/auth/login' : '/api/auth/register',
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password }),
-        }
-      );
+      const auth =
+        mode === 'login'
+          ? await login(username, password)
+          : await register(username, password);
 
-      const data = (await response.json().catch(() => ({}))) as {
-        error?: string;
-        userId?: string;
-      };
-
-      if (!response.ok) throw new Error(data.error || 'Failed');
-      if (!data.userId) throw new Error('missing user');
-
-      setLocalUserId(data.userId);
+      setLocalUserId(auth.userId);
       router.replace('/notes');
       router.refresh();
     } catch (caughtError) {

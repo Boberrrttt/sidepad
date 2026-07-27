@@ -1,18 +1,23 @@
 import type { Note } from '@/shared/types';
 import { ensureSchema, getDb } from '@/server/shared/db/client';
 
+function rowToNote(row: Record<string, unknown>): Note {
+  return {
+    name: String(row.name),
+    body: String(row.body ?? ''),
+    board: String(row.board ?? ''),
+    mtime: Number(row.mtime),
+  };
+}
+
 export async function listNotes(userId: string): Promise<Note[]> {
   await ensureSchema();
   const result = await getDb().execute({
-    sql: 'SELECT name, body, mtime FROM notes WHERE user_id = ? ORDER BY mtime DESC',
+    sql: 'SELECT name, body, board, mtime FROM notes WHERE user_id = ? ORDER BY mtime DESC',
     args: [userId],
   });
 
-  return result.rows.map((row) => ({
-    name: String(row.name),
-    body: String(row.body ?? ''),
-    mtime: Number(row.mtime),
-  }));
+  return result.rows.map((row) => rowToNote(row as Record<string, unknown>));
 }
 
 export async function readNote(
@@ -21,34 +26,32 @@ export async function readNote(
 ): Promise<Note | null> {
   await ensureSchema();
   const result = await getDb().execute({
-    sql: 'SELECT name, body, mtime FROM notes WHERE user_id = ? AND name = ?',
+    sql: 'SELECT name, body, board, mtime FROM notes WHERE user_id = ? AND name = ?',
     args: [userId, name],
   });
   const row = result.rows[0];
 
   if (!row) return null;
 
-  return {
-    name: String(row.name),
-    body: String(row.body ?? ''),
-    mtime: Number(row.mtime),
-  };
+  return rowToNote(row as Record<string, unknown>);
 }
 
 export async function upsertNote(
   userId: string,
   name: string,
   body: string,
+  board: string,
   mtime: number
 ): Promise<void> {
   await ensureSchema();
   await getDb().execute({
-    sql: `INSERT INTO notes (user_id, name, body, mtime) VALUES (?, ?, ?, ?)
+    sql: `INSERT INTO notes (user_id, name, body, board, mtime) VALUES (?, ?, ?, ?, ?)
           ON CONFLICT(user_id, name) DO UPDATE SET
             body = excluded.body,
+            board = excluded.board,
             mtime = excluded.mtime
           WHERE notes.mtime <= excluded.mtime`,
-    args: [userId, name, body, mtime],
+    args: [userId, name, body, board, mtime],
   });
 }
 

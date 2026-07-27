@@ -3,14 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { nearBottom } from '@/app/notes/helpers/near-bottom';
 import { toHtml } from '@/app/notes/helpers/markdown';
+import { streamAsk } from '@/app/notes/ask/api';
 import {
   clearChatLocal,
   getChatLocal,
   mirrorNoteFromServer,
   syncAll,
-} from '@/client/sync.api';
+} from '@/app/notes/sync/api';
 import { errorMessage } from '@/shared/errors';
-import type { AskEvent, ChatMessage } from '@/shared/types';
+import type { ChatMessage } from '@/shared/types';
 
 const PROMPTS = ['Summarize this note', 'Rewrite more clearly', 'Fill in gaps'];
 
@@ -127,67 +128,45 @@ export function AskPanel({
     try {
       await saveCurrent();
 
-      const response = await fetch('/api/ask', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: current, message }),
-        signal: abortController.signal,
-      });
+      for await (const askEvent of streamAsk(
+        current,
+        message,
+        abortController.signal
+      )) {
+        if (askEvent.type === 'chunk') {
+          if (!hasStarted) {
+            hasStarted = true;
+            setIsThinking(false);
+            setChatMessages((previous) => [
+              ...previous,
+              { role: 'assistant', content: askEvent.text },
+            ]);
+          } else {
+            setChatMessages((previous) => {
+              const next = [...previous];
+              const lastMessage = next[next.length - 1];
 
-      if (!response.ok || !response.body) throw new Error(await response.text());
+              if (lastMessage?.role === 'assistant') {
+                next[next.length - 1] = {
+                  role: 'assistant',
+                  content: String(lastMessage.content || '') + askEvent.text,
+                };
+              }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (!line.trim()) continue;
-
-          const askEvent = JSON.parse(line) as AskEvent;
-
-          if (askEvent.type === 'chunk') {
-            if (!hasStarted) {
-              hasStarted = true;
-              setIsThinking(false);
-              setChatMessages((previous) => [
-                ...previous,
-                { role: 'assistant', content: askEvent.text },
-              ]);
-            } else {
-              setChatMessages((previous) => {
-                const next = [...previous];
-                const last = next[next.length - 1];
-
-                if (last?.role === 'assistant') {
-                  next[next.length - 1] = {
-                    role: 'assistant',
-                    content: String(last.content || '') + askEvent.text,
-                  };
-                }
-
-                return next;
-              });
-            }
-
-            requestAnimationFrame(scrollChatIfNeeded);
-          } else if (askEvent.type === 'note_write') {
-            setPanelStatus('Writing note…');
-            setLiveSteps((previous) => [...previous, 'Updated note']);
-            await onNoteWrite(askEvent.body);
-            await mirrorNoteFromServer(current, askEvent.body, askEvent.mtime);
-            await refreshList();
-            requestAnimationFrame(scrollChatIfNeeded);
-          } else if (askEvent.type === 'error') {
-            throw new Error(askEvent.message);
+              return next;
+            });
           }
+
+          requestAnimationFrame(scrollChatIfNeeded);
+        } else if (askEvent.type === 'note_write') {
+          setPanelStatus('Writing note…');
+          setLiveSteps((previous) => [...previous, 'Updated note']);
+          await onNoteWrite(askEvent.body);
+          await mirrorNoteFromServer(current, askEvent.body, askEvent.mtime);
+          await refreshList();
+          requestAnimationFrame(scrollChatIfNeeded);
+        } else if (askEvent.type === 'error') {
+          throw new Error(askEvent.message);
         }
       }
 

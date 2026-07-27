@@ -1,19 +1,7 @@
+import { getLocalUserId } from '@/app/shared/local-user';
 import type { Chat, Note, OutboxOp } from '@/shared/types';
 
 const DB_VERSION = 1;
-const USER_KEY = 'sidepad-user';
-
-export function setLocalUserId(userId: string) {
-  localStorage.setItem(USER_KEY, userId);
-}
-
-export function clearLocalUserId() {
-  localStorage.removeItem(USER_KEY);
-}
-
-export function getLocalUserId(): string | null {
-  return localStorage.getItem(USER_KEY);
-}
 
 function dbName(): string {
   const userId = getLocalUserId();
@@ -54,6 +42,15 @@ function txDone(transaction: IDBTransaction): Promise<void> {
   });
 }
 
+function normalizeNote(note: Note): Note {
+  return {
+    name: note.name,
+    body: note.body ?? '',
+    board: note.board ?? '',
+    mtime: note.mtime,
+  };
+}
+
 export async function localListNotes(): Promise<Note[]> {
   const db = await openDb();
 
@@ -62,9 +59,9 @@ export async function localListNotes(): Promise<Note[]> {
     const request = transaction.objectStore('notes').getAll();
 
     request.onsuccess = () => {
-      const rows = (request.result as Note[]).sort(
-        (left, right) => right.mtime - left.mtime
-      );
+      const rows = (request.result as Note[])
+        .map(normalizeNote)
+        .sort((left, right) => right.mtime - left.mtime);
       resolve(rows);
     };
 
@@ -75,7 +72,7 @@ export async function localListNotes(): Promise<Note[]> {
 export async function localPutNote(note: Note): Promise<void> {
   const db = await openDb();
   const transaction = db.transaction('notes', 'readwrite');
-  transaction.objectStore('notes').put(note);
+  transaction.objectStore('notes').put(normalizeNote(note));
   await txDone(transaction);
 }
 
@@ -213,7 +210,7 @@ export async function replaceAllLocal(notes: Note[], chats: Chat[]): Promise<voi
     if (!remoteNames.has(local.name)) noteStore.delete(local.name);
   }
 
-  for (const remote of notes) noteStore.put(remote);
+  for (const remote of notes) noteStore.put(normalizeNote(remote));
 
   const existingChats = await new Promise<Chat[]>((resolve, reject) => {
     const request = chatStore.getAll();

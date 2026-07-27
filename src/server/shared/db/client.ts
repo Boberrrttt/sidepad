@@ -36,8 +36,10 @@ export async function ensureSchema(): Promise<void> {
 
       const notesInfo = await db.execute('PRAGMA table_info(notes)');
       const noteCols = notesInfo.rows.map((row) => String(row.name));
+      const droppedLegacy =
+        noteCols.length > 0 && !noteCols.includes('user_id');
 
-      if (noteCols.length && !noteCols.includes('user_id')) {
+      if (droppedLegacy) {
         await db.execute('DROP TABLE IF EXISTS notes');
         await db.execute('DROP TABLE IF EXISTS chats');
       }
@@ -46,9 +48,20 @@ export async function ensureSchema(): Promise<void> {
         user_id TEXT NOT NULL,
         name TEXT NOT NULL,
         body TEXT NOT NULL DEFAULT '',
+        board TEXT NOT NULL DEFAULT '',
         mtime INTEGER NOT NULL,
         PRIMARY KEY (user_id, name)
       )`);
+
+      if (
+        noteCols.length &&
+        !droppedLegacy &&
+        !noteCols.includes('board')
+      ) {
+        await db.execute(
+          `ALTER TABLE notes ADD COLUMN board TEXT NOT NULL DEFAULT ''`
+        );
+      }
 
       await db.execute(`CREATE TABLE IF NOT EXISTS chats (
         user_id TEXT NOT NULL,
