@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { AskPanel } from '@/app/notes/components/ask-panel';
 import { NoteEditor, type NoteEditorHandle } from '@/app/notes/components/note-editor';
-import { parseBoard } from '@/app/notes/components/kanban-board';
+import { parseBoard } from '@/app/notes/helpers/board';
 import { getMe, logout as logoutSession } from '@/app/auth/api';
 import {
   deleteNoteLocal,

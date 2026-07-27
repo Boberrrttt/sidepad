@@ -98,6 +98,38 @@ body {
   pointer-events: none;
 }
 
+@keyframes modal-success-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes modal-backdrop-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .modal-success-backdrop {
+    animation: modal-backdrop-in 180ms ease-out both;
+  }
+
+  .modal-success-enter {
+    animation: modal-success-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+
 .note-preview h1,
 .note-preview h2,
 .note-preview h3 {

@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { requireUserId } from '@/server/auth/helpers/session';
+import { isGithubAccessError } from '@/server/integrations/helpers/github';
 import {
   addGithubDraftCard,
   deleteGithubProjectItem,
-  isGithubAccessError,
   moveGithubProjectItemStatus,
   updateGithubCardTitle,
 } from '@/server/integrations/github-project';

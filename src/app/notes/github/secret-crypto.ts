@@ -1,8 +1,6 @@
-type EncryptedSecret = {
-  salt: string;
-  iv: string;
-  data: string;
-};
+import type { EncryptedSecret } from '@/shared/types';
+
+export type { EncryptedSecret };
 
 function toB64(bytes: ArrayBuffer | Uint8Array) {
   const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
@@ -82,5 +80,3 @@ export function isEncryptedSecret(value: unknown): value is EncryptedSecret {
     typeof record.data === 'string'
   );
 }
-
-export type { EncryptedSecret };

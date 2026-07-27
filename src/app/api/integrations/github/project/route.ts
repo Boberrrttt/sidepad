@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server';
 import { requireUserId } from '@/server/auth/helpers/session';
-import {
-  fetchGithubProjectBoard,
-  isGithubAccessError,
-} from '@/server/integrations/github-project';
+import { isGithubAccessError } from '@/server/integrations/helpers/github';
+import { fetchGithubProjectBoard } from '@/server/integrations/github-project';
 import { jsonError } from '@/server/shared/http/errors';
 import { errorMessage } from '@/shared/errors';
 

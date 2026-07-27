@@ -14,10 +14,19 @@ export type Note = {
 
 export type GithubCardContentType = 'Issue' | 'PullRequest' | 'DraftIssue';
 
+export type EncryptedSecret = {
+  salt: string;
+  iv: string;
+  data: string;
+};
+
 export type BoardData = {
   v: 1;
   github?: {
     projectId: string;
+    org: string;
+    projectNumber: number;
+    token?: EncryptedSecret;
     viewerId?: string;
     statusFieldId?: string;
     statusOptions?: Record<string, string>;

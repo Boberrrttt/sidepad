@@ -1,13 +1,14 @@
+import {
+  GITHUB_ACCESS_ERROR,
+  githubGraphql,
+  isAssignedToViewer,
+  type ProjectItem,
+  slug,
+  stripGithubTitlePrefix,
+} from '@/server/integrations/helpers/github';
 import type { BoardData, GithubCardContentType } from '@/shared/types';
 
-type GraphqlError = {
-  message: string;
-  type?: string;
-};
-
 type FieldOption = { id: string; name: string };
-
-type UserNodes = { nodes: Array<{ login: string } | null> | null };
 
 type ProjectNode = {
   id: string;
@@ -19,23 +20,8 @@ type ProjectNode = {
     } | null>;
   };
   items: {
-    nodes: Array<{
-      id: string;
-      fieldValues: {
-        nodes: Array<{
-          name?: string;
-          field?: { name?: string } | null;
-          users?: UserNodes | null;
-        } | null>;
-      };
-      content: {
-        __typename?: string;
-        id?: string;
-        title?: string;
-        number?: number;
-        assignees?: UserNodes | null;
-      } | null;
-    } | null>;
+    pageInfo: { hasNextPage: boolean; endCursor: string | null };
+    nodes: Array<ProjectItem | null>;
   };
 };
 
@@ -47,7 +33,7 @@ type GraphqlData = {
 };
 
 const QUERY = `
-query($org: String!, $number: Int!) {
+query($org: String!, $number: Int!, $cursor: String) {
   viewer { id login }
   organization(login: $org) {
     projectV2(number: $number) {
@@ -61,7 +47,8 @@ query($org: String!, $number: Int!) {
           }
         }
       }
-      items(first: 100) {
+      items(first: 100, after: $cursor) {
+        pageInfo { hasNextPage endCursor }
         nodes {
           id
           fieldValues(first: 20) {
@@ -111,139 +98,59 @@ query($org: String!, $number: Int!) {
 }
 `;
 
-function slug(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '') || 'col';
-}
-
-export const GITHUB_ACCESS_ERROR =
-  'GitHub token lacks access. Use a classic PAT with repo + project (read:project for pull).';
-
-export function isGithubAccessError(message: string) {
-  return (
-    message === GITHUB_ACCESS_ERROR ||
-    /lacks access|bad credentials|forbidden|not authorized/i.test(message)
-  );
-}
-
-function assertGithubAccess(status: number, errors?: GraphqlError[]) {
-  if (status === 401 || status === 403) {
-    throw new Error(GITHUB_ACCESS_ERROR);
-  }
-
-  if (!errors?.length) return;
-
-  const joined = errors.map((error) => error.message).join(' ');
-  const denied = errors.some(
-    (error) =>
-      error.type === 'FORBIDDEN' ||
-      error.type === 'UNAUTHORIZED' ||
-      error.type === 'INSUFFICIENT_SCOPES'
-  );
-
-  if (
-    denied ||
-    /insufficient|forbidden|not authorized|resource not accessible|bad credentials|requires authentication|scope/i.test(
-      joined
-    )
-  ) {
-    throw new Error(GITHUB_ACCESS_ERROR);
-  }
-}
-
-function hasLogin(users: UserNodes | null | undefined, login: string) {
-  return Boolean(
-    users?.nodes?.some(
-      (user) => user?.login?.toLowerCase() === login.toLowerCase()
-    )
-  );
-}
-
-function isAssignedToViewer(
-  item: NonNullable<ProjectNode['items']['nodes'][number]>,
-  login: string
-) {
-  if (hasLogin(item.content?.assignees, login)) return true;
-
-  return item.fieldValues.nodes.some(
-    (value) =>
-      value?.users &&
-      value.field?.name?.toLowerCase() === 'assignees' &&
-      hasLogin(value.users, login)
-  );
-}
-
-async function githubGraphql<ResponseBody>(
-  token: string,
-  query: string,
-  variables: Record<string, unknown>
-): Promise<ResponseBody> {
-  const response = await fetch('https://api.github.com/graphql', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: JSON.stringify({ query, variables }),
-  });
-
-  if (!response.ok) {
-    assertGithubAccess(response.status);
-    throw new Error(`GitHub HTTP ${response.status}`);
-  }
-
-  const payload = (await response.json()) as {
-    data?: ResponseBody;
-    errors?: GraphqlError[];
-  };
-
-  assertGithubAccess(response.status, payload.errors);
-
-  if (payload.errors?.length) {
-    throw new Error(payload.errors[0]?.message || 'GitHub GraphQL error');
-  }
-
-  if (!payload.data) {
-    throw new Error('GitHub GraphQL empty response');
-  }
-
-  return payload.data;
-}
-
-export function stripGithubTitlePrefix(title: string) {
-  return title.replace(/^#\d+\s+/, '').trim();
-}
-
 export async function fetchGithubProjectBoard(
   token: string,
   org: string,
   projectNumber: number
 ): Promise<BoardData> {
-  const data = await githubGraphql<GraphqlData>(token, QUERY, {
-    org,
-    number: projectNumber,
-  });
+  let cursor: string | null = null;
+  let viewerLogin = '';
+  let viewerId: string | undefined;
+  let projectId = '';
+  let fields: ProjectNode['fields']['nodes'] = [];
+  const items: ProjectItem[] = [];
 
-  const viewerLogin = data.viewer?.login?.trim();
-  if (!viewerLogin) {
-    throw new Error(GITHUB_ACCESS_ERROR);
-  }
+  // ponytail: page all items; first:100 alone drops new cards on big boards
+  do {
+    const data: GraphqlData = await githubGraphql<GraphqlData>(token, QUERY, {
+      org,
+      number: projectNumber,
+      cursor,
+    });
 
-  const project = data.organization?.projectV2;
-  if (!project) {
-    throw new Error(
-      'Project not found, or token lacks access to that org/project'
-    );
-  }
+    const nextLogin = data.viewer?.login?.trim();
+    if (!nextLogin) {
+      throw new Error(GITHUB_ACCESS_ERROR);
+    }
+
+    viewerLogin = nextLogin;
+    viewerId = data.viewer?.id;
+
+    const project: ProjectNode | null | undefined =
+      data.organization?.projectV2;
+    if (!project) {
+      throw new Error(
+        'Project not found, or token lacks access to that org/project'
+      );
+    }
+
+    projectId = project.id;
+    fields = project.fields.nodes;
+
+    for (const item of project.items.nodes) {
+      if (item) items.push(item);
+    }
+
+    const nextCursor = project.items.pageInfo.hasNextPage
+      ? project.items.pageInfo.endCursor
+      : null;
+    cursor = nextCursor;
+  } while (cursor);
 
   const statusField =
-    project.fields.nodes.find(
+    fields.find(
       (field) => field?.options && field.name?.toLowerCase() === 'status'
-    ) ||
-    project.fields.nodes.find((field) => field?.options?.length);
+    ) || fields.find((field) => field?.options?.length);
 
   const options = statusField?.options?.length
     ? statusField.options
@@ -280,8 +187,8 @@ export async function fetchGithubProjectBoard(
     columnByName.set(fallback.name.toLowerCase(), fallback);
   }
 
-  for (const item of project.items.nodes) {
-    if (!item || !isAssignedToViewer(item, viewerLogin)) continue;
+  for (const item of items) {
+    if (!isAssignedToViewer(item, viewerLogin)) continue;
 
     const titleBase = item.content?.title?.trim() || 'Untitled';
     const title =
@@ -318,8 +225,10 @@ export async function fetchGithubProjectBoard(
   return {
     v: 1,
     github: {
-      projectId: project.id,
-      viewerId: data.viewer?.id,
+      projectId,
+      org,
+      projectNumber,
+      viewerId,
       statusFieldId: statusField?.id,
       statusOptions:
         Object.keys(statusOptions).length > 0 ? statusOptions : undefined,

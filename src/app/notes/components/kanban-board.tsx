@@ -1,37 +1,27 @@
 'use client';
 
-import { useState, type DragEvent, type KeyboardEvent } from 'react';
+import {
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent,
+  type KeyboardEvent,
+} from 'react';
 import {
   addGithubCard,
   deleteGithubCard,
   moveGithubCard,
   renameGithubCard,
+  syncGithubProject,
 } from '@/app/notes/github/api';
 import { getGithubSession } from '@/app/notes/github/session';
+import { parseBoard, serializeBoard } from '@/app/notes/helpers/board';
+import { newId } from '@/app/notes/sync/local';
 import type { BoardData } from '@/shared/types';
 
 type BoardCard = BoardData['columns'][number]['cards'][number];
 
-function newId() {
-  return crypto.randomUUID();
-}
-
-export function parseBoard(raw: string): BoardData | null {
-  const trimmed = raw.trim();
-  if (!trimmed.startsWith('{')) return null;
-
-  try {
-    const parsed = JSON.parse(trimmed) as BoardData;
-    if (parsed?.v !== 1 || !Array.isArray(parsed.columns)) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
-export function serializeBoard(board: BoardData) {
-  return `${JSON.stringify(board, null, 2)}\n`;
-}
+const GITHUB_POLL_MS = 30_000;
 
 type KanbanBoardProps = {
   projectLabel: string;
@@ -52,6 +42,81 @@ export function KanbanBoard({
   );
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [dragCardId, setDragCardId] = useState<string | null>(null);
+  const boardRef = useRef(board);
+  const editingCardIdRef = useRef(editingCardId);
+  const dragCardIdRef = useRef(dragCardId);
+  const onBoardChangeRef = useRef(onBoardChange);
+  const onScheduleSaveRef = useRef(onScheduleSave);
+  const linked = Boolean(
+    board.github?.projectId &&
+      board.github.org &&
+      board.github.projectNumber &&
+      board.github.token
+  );
+
+  boardRef.current = board;
+  editingCardIdRef.current = editingCardId;
+  dragCardIdRef.current = dragCardId;
+  onBoardChangeRef.current = onBoardChange;
+  onScheduleSaveRef.current = onScheduleSave;
+
+  useEffect(() => {
+    if (!linked) return;
+
+    let busy = false;
+
+    async function pull() {
+      if (busy || editingCardIdRef.current || dragCardIdRef.current) return;
+
+      const meta = boardRef.current.github;
+      if (!meta?.projectId || !meta.org || !meta.projectNumber || !meta.token)
+        return;
+
+      const token = getGithubSession(meta.projectId);
+      if (!token) return;
+
+      busy = true;
+
+      try {
+        const next = await syncGithubProject(
+          token,
+          meta.org,
+          meta.projectNumber
+        );
+        const merged = {
+          ...next,
+          github: next.github
+            ? { ...next.github, token: meta.token }
+            : undefined,
+        };
+        const nextJson = serializeBoard(merged);
+
+        if (serializeBoard(boardRef.current) === nextJson) return;
+
+        setBoard(merged);
+        boardRef.current = merged;
+        onBoardChangeRef.current(nextJson);
+        onScheduleSaveRef.current();
+      } catch {
+      } finally {
+        busy = false;
+      }
+    }
+
+    void pull();
+    const timerId = window.setInterval(() => void pull(), GITHUB_POLL_MS);
+
+    function onVisible() {
+      if (document.visibilityState === 'visible') void pull();
+    }
+
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      window.clearInterval(timerId);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [linked]);
 
   function commit(next: BoardData) {
     setBoard(next);
@@ -87,7 +152,10 @@ export function KanbanBoard({
   async function syncCardTitle(card: BoardCard) {
     if (!card.contentId || !card.contentType) return;
 
-    const token = getGithubSession();
+    const projectId = board.github?.projectId;
+    if (!projectId) return;
+
+    const token = getGithubSession(projectId);
     if (!token) return;
 
     try {
@@ -108,7 +176,7 @@ export function KanbanBoard({
 
   function addCard(columnId: string) {
     const meta = board.github;
-    const token = getGithubSession();
+    const token = meta?.projectId ? getGithubSession(meta.projectId) : null;
 
     if (meta?.projectId && token) {
       void (async () => {
@@ -187,7 +255,9 @@ export function KanbanBoard({
       ),
     });
 
-    const token = getGithubSession();
+    const token = board.github?.projectId
+      ? getGithubSession(board.github.projectId)
+      : null;
 
     if (!board.github?.projectId || !card?.contentId || !token) return;
 
@@ -251,7 +321,7 @@ export function KanbanBoard({
 
     const meta = board.github;
     const optionId = meta?.statusOptions?.[toColumnId];
-    const token = getGithubSession();
+    const token = meta?.projectId ? getGithubSession(meta.projectId) : null;
 
     if (
       fromColumn?.id === toColumnId ||
