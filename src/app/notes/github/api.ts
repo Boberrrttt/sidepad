@@ -1,14 +1,20 @@
 import { postJson } from '@/app/shared/http';
-import type { BoardData, GithubCardContentType } from '@/shared/types';
+import type {
+  BoardData,
+  GithubCardComment,
+  GithubCardContentType,
+  GithubCardDetail,
+} from '@/shared/types';
 
-export async function syncGithubProject(
-  token: string,
-  org: string,
-  project: number
-): Promise<BoardData> {
+export async function syncGithubProject(input: {
+  org: string;
+  project: number;
+  token?: string;
+  projectId?: string;
+}): Promise<BoardData> {
   const board = await postJson<BoardData>(
     '/api/integrations/github/project',
-    { token, org, project }
+    input
   );
 
   if (board.v !== 1 || !Array.isArray(board.columns)) {
@@ -18,6 +24,13 @@ export async function syncGithubProject(
   return board;
 }
 
+export async function disconnectGithubProject(projectId: string) {
+  await postJson('/api/integrations/github/project', {
+    action: 'disconnect',
+    projectId,
+  });
+}
+
 export type GithubAddCardResult = {
   itemId: string;
   contentId: string;
@@ -25,14 +38,40 @@ export type GithubAddCardResult = {
   title: string;
 };
 
+export async function fetchGithubCardDetail(
+  projectId: string,
+  contentId: string,
+  contentType: GithubCardContentType
+): Promise<GithubCardDetail> {
+  return postJson<GithubCardDetail>('/api/integrations/github/card', {
+    projectId,
+    action: 'detail',
+    contentId,
+    contentType,
+  });
+}
+
+export async function addGithubCardComment(
+  projectId: string,
+  contentId: string,
+  body: string
+): Promise<GithubCardComment> {
+  return postJson<GithubCardComment>('/api/integrations/github/card', {
+    projectId,
+    action: 'comment',
+    contentId,
+    body,
+  });
+}
+
 export async function renameGithubCard(
-  token: string,
+  projectId: string,
   contentId: string,
   contentType: GithubCardContentType,
   title: string
 ): Promise<void> {
   await postJson('/api/integrations/github/card', {
-    token,
+    projectId,
     action: 'rename',
     contentId,
     contentType,
@@ -41,29 +80,25 @@ export async function renameGithubCard(
 }
 
 export async function deleteGithubCard(
-  token: string,
   projectId: string,
   itemId: string
 ): Promise<void> {
   await postJson('/api/integrations/github/card', {
-    token,
-    action: 'delete',
     projectId,
+    action: 'delete',
     itemId,
   });
 }
 
 export async function moveGithubCard(
-  token: string,
   projectId: string,
   itemId: string,
   fieldId: string,
   optionId: string
 ): Promise<void> {
   await postJson('/api/integrations/github/card', {
-    token,
-    action: 'move',
     projectId,
+    action: 'move',
     itemId,
     fieldId,
     optionId,
@@ -71,7 +106,6 @@ export async function moveGithubCard(
 }
 
 export async function addGithubCard(
-  token: string,
   projectId: string,
   title: string,
   viewerId?: string,
@@ -81,9 +115,8 @@ export async function addGithubCard(
   const created = await postJson<Partial<GithubAddCardResult>>(
     '/api/integrations/github/card',
     {
-      token,
-      action: 'add',
       projectId,
+      action: 'add',
       title,
       viewerId,
       statusFieldId,

@@ -24,9 +24,9 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --ink: #e8ece8;
-    --ink-soft: #b8c0b9;
-    --mute: #8a938b;
+    --ink: #f2f5f2;
+    --ink-soft: #d7ddd8;
+    --mute: #b4beb6;
     --bone: #0e1411;
     --paper: #121a16;
     --panel: #17201b;
@@ -98,6 +98,38 @@ body {
   pointer-events: none;
 }
 
+@keyframes modal-success-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes modal-backdrop-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .modal-success-backdrop {
+    animation: modal-backdrop-in 180ms ease-out both;
+  }
+
+  .modal-success-enter {
+    animation: modal-success-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+
 .note-preview h1,
 .note-preview h2,
 .note-preview h3 {
@@ -128,4 +160,13 @@ body {
 .note-preview pre code {
   background: none;
   padding: 0;
+}
+
+.note-preview img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0.75rem 0;
+  border-radius: 8px;
+  border: 1px solid var(--line-soft);
 }

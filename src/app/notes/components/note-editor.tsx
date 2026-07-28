@@ -9,11 +9,11 @@ import {
   useRef,
   useState,
 } from 'react';
+import { ConfirmModal } from '@/app/notes/components/confirm-modal';
 import { ConnectAppsModal } from '@/app/notes/components/connect-apps-modal';
-import {
-  KanbanBoard,
-  parseBoard,
-} from '@/app/notes/components/kanban-board';
+import { KanbanBoard } from '@/app/notes/components/kanban-board';
+import { parseBoard } from '@/app/notes/helpers/board';
+import { unlinkGithubBoard } from '@/app/notes/helpers/github-link';
 import { htmlToMd } from '@/app/notes/helpers/markdown';
 import { wordCount } from '@/app/notes/helpers/word-count';
 
@@ -69,6 +69,9 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
     const editorGeneration = useRef(0);
     const [viewMode, setViewMode] = useState<'note' | 'board'>('note');
     const [connectOpen, setConnectOpen] = useState(false);
+    const [connectSuccessOpen, setConnectSuccessOpen] = useState(false);
+    const [disconnectOpen, setDisconnectOpen] = useState(false);
+    const [clearBoardOpen, setClearBoardOpen] = useState(false);
     const [boardSyncKey, setBoardSyncKey] = useState(0);
 
     const fill = useCallback(async (markdown: string) => {
@@ -109,6 +112,9 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
     }
 
     const words = wordCount(body);
+
+    const boardData = parseBoard(board);
+    const noteGithub = boardData?.github;
 
     return (
       <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--paper)]" aria-label="Note editor">
@@ -187,13 +193,34 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
               />
               <div className="mt-1 flex shrink-0 items-center gap-2">
                 {viewMode === 'board' ? (
-                  <button
-                    type="button"
-                    onClick={() => setConnectOpen(true)}
-                    className="rounded-md px-2.5 py-1 text-[13px] font-medium text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--ink)] active:scale-[0.98]"
-                  >
-                    Connect
-                  </button>
+                  <>
+                    {boardData?.columns.length ? (
+                      <button
+                        type="button"
+                        onClick={() => setClearBoardOpen(true)}
+                        className="rounded-md px-2.5 py-1 text-[13px] font-medium text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--danger)] active:scale-[0.98]"
+                      >
+                        Clear board
+                      </button>
+                    ) : null}
+                    {noteGithub?.projectId ? (
+                      <button
+                        type="button"
+                        onClick={() => setDisconnectOpen(true)}
+                        className="rounded-md px-2.5 py-1 text-[13px] font-medium text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--danger)] active:scale-[0.98]"
+                      >
+                        Disconnect
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConnectOpen(true)}
+                        className="rounded-md px-2.5 py-1 text-[13px] font-medium text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--ink)] active:scale-[0.98]"
+                      >
+                        Connect
+                      </button>
+                    )}
+                  </>
                 ) : null}
                 <div
                   className="flex rounded-lg border border-[var(--line-soft)] p-0.5"
@@ -300,16 +327,59 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
           </div>
         )}
 
+        <ConfirmModal
+          open={clearBoardOpen}
+          title="Clear board"
+          body="Removes every column and card. A linked GitHub project will also disconnect."
+          confirmLabel="Clear board"
+          onClose={() => setClearBoardOpen(false)}
+          onConfirm={() => {
+            void unlinkGithubBoard(boardData, false).then((boardJson) => {
+              onBoardChange(boardJson);
+              onScheduleSave();
+              setBoardSyncKey((value) => value + 1);
+              setClearBoardOpen(false);
+            });
+          }}
+        />
+        <ConfirmModal
+          open={disconnectOpen}
+          title="Disconnect GitHub"
+          body="This note will stop syncing and its saved GitHub token will be removed. Other notes stay linked."
+          confirmLabel="Disconnect"
+          onClose={() => setDisconnectOpen(false)}
+          onConfirm={() => {
+            void unlinkGithubBoard(boardData, true).then((boardJson) => {
+              onBoardChange(boardJson);
+              onScheduleSave();
+              setBoardSyncKey((value) => value + 1);
+              setDisconnectOpen(false);
+            });
+          }}
+        />
         <ConnectAppsModal
           open={connectOpen}
           onClose={() => setConnectOpen(false)}
+          noteName={current ?? ''}
+          github={noteGithub}
           onBoardSynced={(boardJson) => {
             onBoardChange(boardJson);
             onScheduleSave();
             setBoardSyncKey((value) => value + 1);
             setViewMode('board');
             setConnectOpen(false);
+            setConnectSuccessOpen(true);
           }}
+        />
+        <ConfirmModal
+          open={connectSuccessOpen}
+          title="Board connected"
+          body="This note now syncs with your GitHub project."
+          confirmLabel="Done"
+          tone="accent"
+          hideCancel
+          onClose={() => setConnectSuccessOpen(false)}
+          onConfirm={() => setConnectSuccessOpen(false)}
         />
       </main>
     );
