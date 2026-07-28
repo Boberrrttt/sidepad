@@ -20,14 +20,23 @@ export async function ensureSchema(): Promise<void> {
     schemaReady = (async () => {
       const db = getDb();
 
-      const usersInfo = await db.execute('PRAGMA table_info(users)');
-      const userCols = usersInfo.rows.map((row) => String(row.name));
+      const accountsInfo = await db.execute('PRAGMA table_info(accounts)');
+      let accountCols = accountsInfo.rows.map((row) => String(row.name));
 
-      if (userCols.length && !userCols.includes('username')) {
-        await db.execute('DROP TABLE IF EXISTS users');
+      if (!accountCols.length) {
+        const usersInfo = await db.execute('PRAGMA table_info(users)');
+
+        if (usersInfo.rows.length) {
+          await db.execute('ALTER TABLE users RENAME TO accounts');
+          accountCols = usersInfo.rows.map((row) => String(row.name));
+        }
       }
 
-      await db.execute(`CREATE TABLE IF NOT EXISTS users (
+      if (accountCols.length && !accountCols.includes('username')) {
+        await db.execute('DROP TABLE IF EXISTS accounts');
+      }
+
+      await db.execute(`CREATE TABLE IF NOT EXISTS accounts (
         id TEXT PRIMARY KEY,
         username TEXT NOT NULL UNIQUE,
         password_hash TEXT NOT NULL,
