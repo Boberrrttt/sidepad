@@ -44,6 +44,7 @@ export function KanbanBoard({
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [detailCardId, setDetailCardId] = useState<string | null>(null);
   const [dragCardId, setDragCardId] = useState<string | null>(null);
+  const [addingColumnId, setAddingColumnId] = useState<string | null>(null);
   const boardRef = useRef(board);
   const editingCardIdRef = useRef(editingCardId);
   const detailCardIdRef = useRef(detailCardId);
@@ -176,9 +177,13 @@ export function KanbanBoard({
   }
 
   function addCard(columnId: string) {
+    if (addingColumnId) return;
+
     const meta = board.github;
 
     if (meta?.projectId) {
+      setAddingColumnId(columnId);
+
       void (async () => {
         try {
           const created = await addGithubCard(
@@ -216,6 +221,8 @@ export function KanbanBoard({
               ? caughtError.message
               : 'GitHub add failed'
           );
+        } finally {
+          setAddingColumnId(null);
         }
       })();
       return;
@@ -498,14 +505,25 @@ export function KanbanBoard({
                 )}
               </li>
             ))}
+            {addingColumnId === column.id ? (
+              <li
+                aria-busy="true"
+                aria-label="Adding card"
+                className="rounded-[10px] border border-[var(--line-soft)] bg-[var(--panel)] px-2.5 py-2"
+              >
+                <div className="h-3.5 w-3/4 animate-pulse rounded-sm bg-[var(--line-soft)]" />
+                <div className="mt-2 h-2.5 w-1/2 animate-pulse rounded-sm bg-[var(--line-soft)] [animation-delay:120ms]" />
+              </li>
+            ) : null}
           </ul>
 
           <button
             type="button"
+            disabled={addingColumnId === column.id}
             onClick={() => addCard(column.id)}
-            className="mx-2 mb-2 rounded-lg px-2 py-1.5 text-left text-[13px] font-medium text-[var(--mute)] hover:bg-[var(--line-soft)] hover:text-[var(--ink)]"
+            className="mx-2 mb-2 rounded-lg px-2 py-1.5 text-left text-[13px] font-medium text-[var(--mute)] hover:bg-[var(--line-soft)] hover:text-[var(--ink)] disabled:pointer-events-none disabled:opacity-60"
           >
-            + Add a card
+            {addingColumnId === column.id ? 'Adding…' : '+ Add a card'}
           </button>
         </section>
       ))}
