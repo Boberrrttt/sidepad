@@ -334,23 +334,27 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
           confirmLabel="Clear board"
           onClose={() => setClearBoardOpen(false)}
           onConfirm={() => {
-            onBoardChange(unlinkGithubBoard(boardData, false));
-            onScheduleSave();
-            setBoardSyncKey((value) => value + 1);
-            setClearBoardOpen(false);
+            void unlinkGithubBoard(boardData, false).then((boardJson) => {
+              onBoardChange(boardJson);
+              onScheduleSave();
+              setBoardSyncKey((value) => value + 1);
+              setClearBoardOpen(false);
+            });
           }}
         />
         <ConfirmModal
           open={disconnectOpen}
           title="Disconnect GitHub"
-          body="This note will stop syncing and its encrypted GitHub token will be removed. Other notes stay linked."
+          body="This note will stop syncing and its saved GitHub token will be removed. Other notes stay linked."
           confirmLabel="Disconnect"
           onClose={() => setDisconnectOpen(false)}
           onConfirm={() => {
-            onBoardChange(unlinkGithubBoard(boardData, true));
-            onScheduleSave();
-            setBoardSyncKey((value) => value + 1);
-            setDisconnectOpen(false);
+            void unlinkGithubBoard(boardData, true).then((boardJson) => {
+              onBoardChange(boardJson);
+              onScheduleSave();
+              setBoardSyncKey((value) => value + 1);
+              setDisconnectOpen(false);
+            });
           }}
         />
         <ConnectAppsModal

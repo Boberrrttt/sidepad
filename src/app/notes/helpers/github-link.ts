@@ -1,14 +1,14 @@
 import { parseBoard, serializeBoard } from '@/app/notes/helpers/board';
-import { clearGithubSession } from '@/app/notes/github/session';
+import { disconnectGithubProject } from '@/app/notes/github/api';
 import { listNotesLocal, writeNoteLocal } from '@/app/notes/sync/api';
 import type { BoardData, Note } from '@/shared/types';
 
-export function unlinkGithubBoard(
+export async function unlinkGithubBoard(
   board: BoardData | null,
   keepColumns: boolean
 ) {
   if (board?.github?.projectId) {
-    clearGithubSession(board.github.projectId);
+    await disconnectGithubProject(board.github.projectId).catch(() => {});
   }
 
   return serializeBoard({
@@ -44,5 +44,9 @@ export async function disconnectLinkedNote(note: Note) {
   const board = parseBoard(note.board);
   if (!board) return;
 
-  await writeNoteLocal(note.name, note.body, unlinkGithubBoard(board, true));
+  await writeNoteLocal(
+    note.name,
+    note.body,
+    await unlinkGithubBoard(board, true)
+  );
 }

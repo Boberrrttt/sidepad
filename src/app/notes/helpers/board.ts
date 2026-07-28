@@ -5,8 +5,17 @@ export function parseBoard(raw: string): BoardData | null {
   if (!trimmed.startsWith('{')) return null;
 
   try {
-    const parsed = JSON.parse(trimmed) as BoardData;
+    const parsed = JSON.parse(trimmed) as BoardData & {
+      github?: BoardData['github'] & { token?: unknown };
+    };
+
     if (parsed?.v !== 1 || !Array.isArray(parsed.columns)) return null;
+
+    if (parsed.github && 'token' in parsed.github) {
+      const { token: _ignored, ...github } = parsed.github;
+      return { ...parsed, github };
+    }
+
     return parsed;
   } catch {
     return null;

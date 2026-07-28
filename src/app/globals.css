@@ -24,9 +24,9 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --ink: #e8ece8;
-    --ink-soft: #b8c0b9;
-    --mute: #8a938b;
+    --ink: #f2f5f2;
+    --ink-soft: #d7ddd8;
+    --mute: #b4beb6;
     --bone: #0e1411;
     --paper: #121a16;
     --panel: #17201b;
@@ -160,4 +160,13 @@ body {
 .note-preview pre code {
   background: none;
   padding: 0;
+}
+
+.note-preview img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0.75rem 0;
+  border-radius: 8px;
+  border: 1px solid var(--line-soft);
 }

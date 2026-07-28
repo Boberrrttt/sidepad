@@ -14,10 +14,36 @@ export type Note = {
 
 export type GithubCardContentType = 'Issue' | 'PullRequest' | 'DraftIssue';
 
-export type EncryptedSecret = {
-  salt: string;
-  iv: string;
-  data: string;
+export type GithubCardField = {
+  name: string;
+  value: string;
+};
+
+export type GithubCardComment = {
+  id: string;
+  body: string;
+  createdAt: string;
+  author: string;
+};
+
+export type GithubCardTimelineItem = {
+  id: string;
+  at: string;
+  text: string;
+};
+
+export type GithubLinkedPullRequest = {
+  number: number;
+  title: string;
+  url: string;
+  state?: string;
+};
+
+export type GithubCardDetail = {
+  body?: string;
+  comments: GithubCardComment[];
+  timeline: GithubCardTimelineItem[];
+  linkedPullRequests: GithubLinkedPullRequest[];
 };
 
 export type BoardData = {
@@ -26,7 +52,6 @@ export type BoardData = {
     projectId: string;
     org: string;
     projectNumber: number;
-    token?: EncryptedSecret;
     viewerId?: string;
     statusFieldId?: string;
     statusOptions?: Record<string, string>;
@@ -39,6 +64,11 @@ export type BoardData = {
       title: string;
       contentId?: string;
       contentType?: GithubCardContentType;
+      url?: string;
+      state?: 'OPEN' | 'CLOSED';
+      labels?: string[];
+      assignees?: string[];
+      fields?: GithubCardField[];
     }>;
   }>;
 };

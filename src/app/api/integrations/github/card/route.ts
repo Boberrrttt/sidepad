@@ -1,26 +1,32 @@
 import { NextResponse } from 'next/server';
 import { requireUserId } from '@/server/auth/helpers/session';
-import { isGithubAccessError } from '@/server/integrations/helpers/github';
+import {
+  isGithubAccessError,
+  isGithubNotConnected,
+} from '@/server/integrations/helpers/github';
 import {
   addGithubDraftCard,
+  addGithubIssueComment,
   deleteGithubProjectItem,
+  fetchGithubCardDetail,
   moveGithubProjectItemStatus,
   updateGithubCardTitle,
 } from '@/server/integrations/github-project';
+import { requireStoredGithubToken } from '@/server/integrations/github-tokens.repository';
 import { jsonError } from '@/server/shared/http/errors';
 import { errorMessage } from '@/shared/errors';
 import type { GithubCardContentType } from '@/shared/types';
 
 export async function POST(request: Request) {
   try {
-    await requireUserId();
+    const userId = await requireUserId();
     const payload = (await request.json()) as {
-      token?: string;
+      projectId?: string;
       action?: string;
       contentId?: string;
       contentType?: GithubCardContentType;
       title?: string;
-      projectId?: string;
+      body?: string;
       itemId?: string;
       fieldId?: string;
       optionId?: string;
@@ -29,11 +35,42 @@ export async function POST(request: Request) {
       statusOptionId?: string;
     };
 
-    const token = String(payload.token ?? '').trim();
+    const projectId = String(payload.projectId ?? '').trim();
     const action = String(payload.action ?? '').trim();
 
-    if (!token || !action) {
+    if (!projectId || !action) {
       return NextResponse.json({ error: 'bad request' }, { status: 400 });
+    }
+
+    const token = await requireStoredGithubToken(userId, projectId);
+
+    if (action === 'detail') {
+      const contentId = String(payload.contentId ?? '').trim();
+      const contentType = payload.contentType;
+
+      if (
+        !contentId ||
+        (contentType !== 'Issue' &&
+          contentType !== 'PullRequest' &&
+          contentType !== 'DraftIssue')
+      ) {
+        return NextResponse.json({ error: 'bad request' }, { status: 400 });
+      }
+
+      const detail = await fetchGithubCardDetail(token, contentId, contentType);
+      return NextResponse.json(detail);
+    }
+
+    if (action === 'comment') {
+      const contentId = String(payload.contentId ?? '').trim();
+      const body = String(payload.body ?? '');
+
+      if (!contentId || !body.trim()) {
+        return NextResponse.json({ error: 'bad request' }, { status: 400 });
+      }
+
+      const comment = await addGithubIssueComment(token, contentId, body);
+      return NextResponse.json(comment);
     }
 
     if (action === 'rename') {
@@ -55,10 +92,9 @@ export async function POST(request: Request) {
     }
 
     if (action === 'delete') {
-      const projectId = String(payload.projectId ?? '').trim();
       const itemId = String(payload.itemId ?? '').trim();
 
-      if (!projectId || !itemId) {
+      if (!itemId) {
         return NextResponse.json({ error: 'bad request' }, { status: 400 });
       }
 
@@ -67,12 +103,11 @@ export async function POST(request: Request) {
     }
 
     if (action === 'move') {
-      const projectId = String(payload.projectId ?? '').trim();
       const itemId = String(payload.itemId ?? '').trim();
       const fieldId = String(payload.fieldId ?? '').trim();
       const optionId = String(payload.optionId ?? '').trim();
 
-      if (!projectId || !itemId || !fieldId || !optionId) {
+      if (!itemId || !fieldId || !optionId) {
         return NextResponse.json({ error: 'bad request' }, { status: 400 });
       }
 
@@ -87,17 +122,12 @@ export async function POST(request: Request) {
     }
 
     if (action === 'add') {
-      const projectId = String(payload.projectId ?? '').trim();
       const title = String(payload.title ?? 'Untitled');
       const viewerId = String(payload.viewerId ?? '').trim() || undefined;
       const statusFieldId =
         String(payload.statusFieldId ?? '').trim() || undefined;
       const statusOptionId =
         String(payload.statusOptionId ?? '').trim() || undefined;
-
-      if (!projectId) {
-        return NextResponse.json({ error: 'bad request' }, { status: 400 });
-      }
 
       const created = await addGithubDraftCard(
         token,
@@ -115,6 +145,10 @@ export async function POST(request: Request) {
     const message = errorMessage(caughtError);
 
     if (isGithubAccessError(message)) {
+      return NextResponse.json({ error: message }, { status: 403 });
+    }
+
+    if (isGithubNotConnected(message)) {
       return NextResponse.json({ error: message }, { status: 403 });
     }
 

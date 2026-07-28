@@ -9,6 +9,10 @@ export type ProjectItem = {
   fieldValues: {
     nodes: Array<{
       name?: string;
+      text?: string;
+      number?: number;
+      date?: string;
+      title?: string;
       field?: { name?: string } | null;
       users?: UserNodes | null;
     } | null>;
@@ -18,9 +22,54 @@ export type ProjectItem = {
     id?: string;
     title?: string;
     number?: number;
+    state?: string;
+    url?: string;
+    labels?: { nodes: Array<{ name: string } | null> | null } | null;
     assignees?: UserNodes | null;
   } | null;
 };
+
+export function projectItemFields(
+  item: ProjectItem
+): Array<{ name: string; value: string }> {
+  const fields: Array<{ name: string; value: string }> = [];
+
+  for (const value of item.fieldValues.nodes) {
+    const fieldName = value?.field?.name?.trim();
+    if (!fieldName) continue;
+
+    const key = fieldName.toLowerCase();
+    if (key === 'status' || key === 'assignees') continue;
+
+    if (value?.users) continue;
+
+    if (value?.text != null && value.text !== '') {
+      fields.push({ name: fieldName, value: value.text });
+      continue;
+    }
+
+    if (value?.number != null && !Number.isNaN(value.number)) {
+      fields.push({ name: fieldName, value: String(value.number) });
+      continue;
+    }
+
+    if (value?.date) {
+      fields.push({ name: fieldName, value: value.date });
+      continue;
+    }
+
+    if (value?.title) {
+      fields.push({ name: fieldName, value: value.title });
+      continue;
+    }
+
+    if (value?.name) {
+      fields.push({ name: fieldName, value: value.name });
+    }
+  }
+
+  return fields;
+}
 
 export const GITHUB_ACCESS_ERROR =
   'GitHub token lacks access. Use a classic PAT with repo + project (read:project for pull).';
@@ -30,6 +79,10 @@ export function isGithubAccessError(message: string) {
     message === GITHUB_ACCESS_ERROR ||
     /lacks access|bad credentials|forbidden|not authorized/i.test(message)
   );
+}
+
+export function isGithubNotConnected(message: string) {
+  return message.includes('GitHub not connected');
 }
 
 function assertGithubAccess(status: number, errors?: GraphqlError[]) {
@@ -81,7 +134,8 @@ export function stripGithubTitlePrefix(title: string) {
 export async function githubGraphql<ResponseBody>(
   token: string,
   query: string,
-  variables: Record<string, unknown>
+  variables: Record<string, unknown>,
+  options?: { allowErrors?: boolean }
 ): Promise<ResponseBody> {
   const response = await fetch('https://api.github.com/graphql', {
     method: 'POST',
@@ -103,14 +157,20 @@ export async function githubGraphql<ResponseBody>(
     errors?: GraphqlError[];
   };
 
-  assertGithubAccess(response.status, payload.errors);
+  if (!options?.allowErrors) {
+    assertGithubAccess(response.status, payload.errors);
+  } else {
+    assertGithubAccess(response.status);
+  }
 
-  if (payload.errors?.length) {
+  if (payload.errors?.length && !options?.allowErrors) {
     throw new Error(payload.errors[0]?.message || 'GitHub GraphQL error');
   }
 
   if (!payload.data) {
-    throw new Error('GitHub GraphQL empty response');
+    throw new Error(
+      payload.errors?.[0]?.message || 'GitHub GraphQL empty response'
+    );
   }
 
   return payload.data;

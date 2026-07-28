@@ -3,17 +3,6 @@
 import { useEffect, useState } from 'react';
 import { ConfirmModal } from '@/app/notes/components/confirm-modal';
 import { syncGithubProject } from '@/app/notes/github/api';
-import {
-  clearLegacyGithubStorage,
-  getGithubSession,
-  readEncryptedSession,
-  setGithubSession,
-} from '@/app/notes/github/session';
-import {
-  decryptSecret,
-  encryptSecret,
-  isEncryptedSecret,
-} from '@/app/notes/github/secret-crypto';
 import { serializeBoard } from '@/app/notes/helpers/board';
 import {
   disconnectLinkedNote,
@@ -37,22 +26,16 @@ export function ConnectAppsModal({
   onBoardSynced,
 }: ConnectAppsModalProps) {
   const [token, setToken] = useState('');
-  const [passphrase, setPassphrase] = useState('');
   const [org, setOrg] = useState('');
   const [project, setProject] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [overrideNote, setOverrideNote] = useState<string | null>(null);
 
-  const noteToken = github?.token;
-  const noteProjectId = github?.projectId;
-  const hasNoteToken = isEncryptedSecret(noteToken);
-
   useEffect(() => {
     if (!open) return;
 
     setToken('');
-    setPassphrase('');
     setOrg(github?.org ?? '');
     setProject(
       github?.projectNumber != null ? String(github.projectNumber) : ''
@@ -63,32 +46,13 @@ export function ConnectAppsModal({
 
   if (!open) return null;
 
-  async function resolveToken(nextPass: string) {
-    const typed = token.trim();
-    if (typed) return typed;
-
-    if (hasNoteToken && noteToken) {
-      return decryptSecret(noteToken, nextPass);
-    }
-
-    if (noteProjectId) {
-      const session = getGithubSession(noteProjectId);
-      if (session) return session;
-
-      const encrypted = readEncryptedSession(noteProjectId);
-      if (encrypted) return decryptSecret(encrypted, nextPass);
-    }
-
-    throw new Error('Token required');
-  }
-
   async function saveGithubForm(forceOverride = false) {
-    const nextPass = passphrase.trim();
+    const nextToken = token.trim();
     const nextOrg = org.trim();
     const nextProject = project.trim();
     const projectNumber = Number(nextProject);
 
-    if (!nextPass || !nextOrg || !nextProject) return;
+    if (!nextToken || !nextOrg || !nextProject) return;
 
     if (!Number.isFinite(projectNumber) || projectNumber < 1) {
       setError('Project number must be a positive number.');
@@ -111,27 +75,18 @@ export function ConnectAppsModal({
         await disconnectLinkedNote(linked);
       }
 
-      const nextToken = await resolveToken(nextPass);
-      const board = await syncGithubProject(nextToken, nextOrg, projectNumber);
-      const encrypted = await encryptSecret(nextToken, nextPass);
+      const board = await syncGithubProject({
+        token: nextToken,
+        org: nextOrg,
+        project: projectNumber,
+      });
 
       if (!board.github?.projectId) {
         throw new Error('GitHub sync returned no project id');
       }
 
-      const withToken = {
-        ...board,
-        github: {
-          ...board.github,
-          token: encrypted,
-        },
-      };
-
-      clearLegacyGithubStorage();
-      await setGithubSession(board.github.projectId, nextToken, nextPass);
-      onBoardSynced(serializeBoard(withToken));
+      onBoardSynced(serializeBoard(board));
       setToken('');
-      setPassphrase('');
       onClose();
     } catch (caughtError) {
       setError(
@@ -144,14 +99,7 @@ export function ConnectAppsModal({
     }
   }
 
-  const canSubmit =
-    passphrase.trim() &&
-    org.trim() &&
-    project.trim() &&
-    (token.trim() ||
-      hasNoteToken ||
-      Boolean(noteProjectId && getGithubSession(noteProjectId)) ||
-      Boolean(noteProjectId && readEncryptedSession(noteProjectId)));
+  const canSubmit = Boolean(token.trim() && org.trim() && project.trim());
 
   return (
     <>
@@ -170,25 +118,15 @@ export function ConnectAppsModal({
         >
           <p className="m-0 text-lg font-semibold">Connect GitHub</p>
           <p className="mt-2 text-sm text-[var(--mute)]">
-            Classic PAT with repo + project. Token encrypted on this note.
+            Classic PAT with repo + project. Token stored on the server.
           </p>
           <label className="mt-4 block text-sm font-medium text-[var(--ink-soft)]">
-            Token{hasNoteToken ? ' (leave blank to unlock this note)' : ''}
+            Token
             <input
               type="password"
               value={token}
               onChange={(event) => setToken(event.target.value)}
               autoComplete="off"
-              className="mt-1.5 w-full rounded-[var(--radius)] border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
-            />
-          </label>
-          <label className="mt-3 block text-sm font-medium text-[var(--ink-soft)]">
-            Encrypt passphrase
-            <input
-              type="password"
-              value={passphrase}
-              onChange={(event) => setPassphrase(event.target.value)}
-              autoComplete="new-password"
               className="mt-1.5 w-full rounded-[var(--radius)] border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm outline-none focus:border-[var(--accent)]"
             />
           </label>
@@ -238,7 +176,7 @@ export function ConnectAppsModal({
       <ConfirmModal
         open={Boolean(overrideNote)}
         title="Project already connected"
-        body={`“${overrideNote}” already uses this GitHub project. Connecting here disconnects that note and overrides its session.`}
+        body={`“${overrideNote}” already uses this GitHub project. Connecting here disconnects that note.`}
         confirmLabel="Switch here"
         onClose={() => setOverrideNote(null)}
         onConfirm={() => {

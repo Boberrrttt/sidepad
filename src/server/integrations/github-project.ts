@@ -2,11 +2,19 @@ import {
   GITHUB_ACCESS_ERROR,
   githubGraphql,
   isAssignedToViewer,
+  projectItemFields,
   type ProjectItem,
   slug,
   stripGithubTitlePrefix,
 } from '@/server/integrations/helpers/github';
-import type { BoardData, GithubCardContentType } from '@/shared/types';
+import type {
+  BoardData,
+  GithubCardComment,
+  GithubCardContentType,
+  GithubCardDetail,
+  GithubCardTimelineItem,
+  GithubLinkedPullRequest,
+} from '@/shared/types';
 
 type FieldOption = { id: string; name: string };
 
@@ -67,6 +75,30 @@ query($org: String!, $number: Int!, $cursor: String) {
                   nodes { login }
                 }
               }
+              ... on ProjectV2ItemFieldTextValue {
+                text
+                field {
+                  ... on ProjectV2FieldCommon { name }
+                }
+              }
+              ... on ProjectV2ItemFieldNumberValue {
+                number
+                field {
+                  ... on ProjectV2FieldCommon { name }
+                }
+              }
+              ... on ProjectV2ItemFieldDateValue {
+                date
+                field {
+                  ... on ProjectV2FieldCommon { name }
+                }
+              }
+              ... on ProjectV2ItemFieldIterationValue {
+                title
+                field {
+                  ... on ProjectV2IterationField { name }
+                }
+              }
             }
           }
           content {
@@ -75,6 +107,9 @@ query($org: String!, $number: Int!, $cursor: String) {
               id
               title
               number
+              state
+              url
+              labels(first: 10) { nodes { name } }
               assignees(first: 10) { nodes { login } }
             }
             ... on PullRequest {
@@ -82,6 +117,9 @@ query($org: String!, $number: Int!, $cursor: String) {
               id
               title
               number
+              state
+              url
+              labels(first: 10) { nodes { name } }
               assignees(first: 10) { nodes { login } }
             }
             ... on DraftIssue {
@@ -110,7 +148,6 @@ export async function fetchGithubProjectBoard(
   let fields: ProjectNode['fields']['nodes'] = [];
   const items: ProjectItem[] = [];
 
-  // ponytail: page all items; first:100 alone drops new cards on big boards
   do {
     const data: GraphqlData = await githubGraphql<GraphqlData>(token, QUERY, {
       org,
@@ -214,11 +251,33 @@ export async function fetchGithubProjectBoard(
         ? typename
         : undefined;
 
+    const labels =
+      item.content?.labels?.nodes
+        ?.map((label) => label?.name?.trim())
+        .filter((name): name is string => Boolean(name)) ?? [];
+
+    const assignees =
+      item.content?.assignees?.nodes
+        ?.map((user) => user?.login?.trim())
+        .filter((login): login is string => Boolean(login)) ?? [];
+
+    const rawState = item.content?.state?.toUpperCase();
+    const state =
+      rawState === 'OPEN' || rawState === 'CLOSED' ? rawState : undefined;
+
+    const url = item.content?.url?.trim() || undefined;
+    const fields = projectItemFields(item);
+
     column.cards.push({
       id: item.id,
       title,
       contentId: item.content?.id,
       contentType,
+      url,
+      state,
+      labels: labels.length ? labels : undefined,
+      assignees: assignees.length ? assignees : undefined,
+      fields: fields.length ? fields : undefined,
     });
   }
 
@@ -383,5 +442,382 @@ export async function addGithubDraftCard(
     contentId,
     contentType: 'DraftIssue' as const,
     title: cleanTitle,
+  };
+}
+
+type ActorLogin = { login?: string } | null;
+
+type PullRef = {
+  number?: number;
+  title?: string;
+  url?: string;
+  state?: string;
+} | null;
+
+type DetailNode = {
+  body?: string | null;
+  comments?: {
+    nodes: Array<{
+      id?: string;
+      body?: string;
+      createdAt?: string;
+      author?: ActorLogin;
+    } | null> | null;
+  } | null;
+  closedByPullRequestsReferences?: {
+    nodes: Array<PullRef> | null;
+  } | null;
+  timelineItems?: {
+    nodes: Array<{
+      __typename?: string;
+      id?: string;
+      createdAt?: string;
+      actor?: ActorLogin;
+      label?: { name?: string } | null;
+      assignee?: ActorLogin;
+      previousTitle?: string;
+      currentTitle?: string;
+      previousStatus?: string | null;
+      status?: string | null;
+      closer?: PullRef;
+      subject?: PullRef;
+    } | null> | null;
+  } | null;
+};
+
+const COMMENT_FIELDS = `
+  body
+  comments(first: 50) {
+    nodes {
+      id
+      body
+      createdAt
+      author { login }
+    }
+  }
+`;
+
+const TIMELINE_FIELDS = `
+  timelineItems(
+    first: 50
+    itemTypes: [
+      LABELED_EVENT
+      UNLABELED_EVENT
+      ASSIGNED_EVENT
+      UNASSIGNED_EVENT
+      CLOSED_EVENT
+      REOPENED_EVENT
+      RENAMED_TITLE_EVENT
+      CONNECTED_EVENT
+      PROJECT_V2_ITEM_STATUS_CHANGED_EVENT
+    ]
+  ) {
+    nodes {
+      __typename
+      ... on LabeledEvent {
+        id
+        createdAt
+        actor { login }
+        label { name }
+      }
+      ... on UnlabeledEvent {
+        id
+        createdAt
+        actor { login }
+        label { name }
+      }
+      ... on AssignedEvent {
+        id
+        createdAt
+        actor { login }
+        assignee {
+          ... on User { login }
+          ... on Bot { login }
+          ... on Mannequin { login }
+          ... on Organization { login }
+        }
+      }
+      ... on UnassignedEvent {
+        id
+        createdAt
+        actor { login }
+        assignee {
+          ... on User { login }
+          ... on Bot { login }
+          ... on Mannequin { login }
+          ... on Organization { login }
+        }
+      }
+      ... on ClosedEvent {
+        id
+        createdAt
+        actor { login }
+        closer {
+          ... on PullRequest { number title url state }
+        }
+      }
+      ... on ReopenedEvent {
+        id
+        createdAt
+        actor { login }
+      }
+      ... on RenamedTitleEvent {
+        id
+        createdAt
+        actor { login }
+        previousTitle
+        currentTitle
+      }
+      ... on ConnectedEvent {
+        id
+        createdAt
+        subject {
+          ... on PullRequest { number title url state }
+        }
+      }
+      ... on ProjectV2ItemStatusChangedEvent {
+        id
+        createdAt
+        actor { login }
+        previousStatus
+        status
+      }
+    }
+  }
+`;
+
+function pushPull(
+  list: GithubLinkedPullRequest[],
+  seen: Set<number>,
+  pull: PullRef
+) {
+  if (!pull?.number || !pull.url || !pull.title) return;
+  if (seen.has(pull.number)) return;
+
+  seen.add(pull.number);
+  list.push({
+    number: pull.number,
+    title: pull.title,
+    url: pull.url,
+    state: pull.state || undefined,
+  });
+}
+
+function formatTimeline(
+  node: NonNullable<NonNullable<DetailNode['timelineItems']>['nodes']>[number]
+): GithubCardTimelineItem | null {
+  if (!node?.__typename || !node.createdAt) return null;
+
+  const actor = node.actor?.login || 'someone';
+  const id = node.id || `${node.__typename}-${node.createdAt}`;
+  const at = node.createdAt;
+
+  if (node.__typename === 'LabeledEvent' && node.label?.name) {
+    return { id, at, text: `${actor} added label ${node.label.name}` };
+  }
+
+  if (node.__typename === 'UnlabeledEvent' && node.label?.name) {
+    return { id, at, text: `${actor} removed label ${node.label.name}` };
+  }
+
+  if (node.__typename === 'AssignedEvent' && node.assignee?.login) {
+    return { id, at, text: `${actor} assigned ${node.assignee.login}` };
+  }
+
+  if (node.__typename === 'UnassignedEvent' && node.assignee?.login) {
+    return { id, at, text: `${actor} unassigned ${node.assignee.login}` };
+  }
+
+  if (node.__typename === 'ClosedEvent') {
+    if (node.closer?.number) {
+      return {
+        id,
+        at,
+        text: `${actor} closed via PR #${node.closer.number}`,
+      };
+    }
+
+    return { id, at, text: `${actor} closed this` };
+  }
+
+  if (node.__typename === 'ReopenedEvent') {
+    return { id, at, text: `${actor} reopened this` };
+  }
+
+  if (node.__typename === 'RenamedTitleEvent') {
+    return {
+      id,
+      at,
+      text: `${actor} renamed "${node.previousTitle || ''}" to "${node.currentTitle || ''}"`,
+    };
+  }
+
+  if (node.__typename === 'ConnectedEvent' && node.subject?.number) {
+    return {
+      id,
+      at,
+      text: `Linked PR #${node.subject.number} ${node.subject.title || ''}`.trim(),
+    };
+  }
+
+  if (node.__typename === 'ProjectV2ItemStatusChangedEvent') {
+    const from = node.previousStatus || '?';
+    const toStatus = node.status || '?';
+    return { id, at, text: `${actor} moved ${from} to ${toStatus}` };
+  }
+
+  return null;
+}
+
+function parseDetailNode(node: DetailNode | null | undefined): GithubCardDetail {
+  const comments: GithubCardComment[] = [];
+  const timeline: GithubCardTimelineItem[] = [];
+  const linkedPullRequests: GithubLinkedPullRequest[] = [];
+  const seenPulls = new Set<number>();
+
+  for (const comment of node?.comments?.nodes ?? []) {
+    if (!comment?.id) continue;
+
+    comments.push({
+      id: comment.id,
+      body: comment.body || '',
+      createdAt: comment.createdAt || '',
+      author: comment.author?.login || 'unknown',
+    });
+  }
+
+  for (const pull of node?.closedByPullRequestsReferences?.nodes ?? []) {
+    pushPull(linkedPullRequests, seenPulls, pull);
+  }
+
+  for (const event of node?.timelineItems?.nodes ?? []) {
+    const item = formatTimeline(event);
+    if (item) timeline.push(item);
+
+    if (!event) continue;
+
+    if (event.__typename === 'ConnectedEvent') {
+      pushPull(linkedPullRequests, seenPulls, event.subject ?? null);
+    }
+
+    if (event.__typename === 'ClosedEvent') {
+      pushPull(linkedPullRequests, seenPulls, event.closer ?? null);
+    }
+  }
+
+  timeline.sort((left, right) => left.at.localeCompare(right.at));
+
+  return {
+    body: node?.body?.trim() || undefined,
+    comments,
+    timeline,
+    linkedPullRequests,
+  };
+}
+
+export async function fetchGithubCardDetail(
+  token: string,
+  contentId: string,
+  contentType: GithubCardContentType
+): Promise<GithubCardDetail> {
+  if (contentType === 'DraftIssue') {
+    const data = await githubGraphql<{ node?: DetailNode | null }>(
+      token,
+      `
+      query($id: ID!) {
+        node(id: $id) {
+          ... on DraftIssue { body }
+        }
+      }
+    `,
+      { id: contentId },
+      { allowErrors: true }
+    );
+
+    return {
+      body: data.node?.body?.trim() || undefined,
+      comments: [],
+      timeline: [],
+      linkedPullRequests: [],
+    };
+  }
+
+  const typeSpread =
+    contentType === 'Issue' ? '... on Issue' : '... on PullRequest';
+  const issueExtras =
+    contentType === 'Issue'
+      ? `closedByPullRequestsReferences(first: 10) {
+          nodes { number title url state }
+        }`
+      : '';
+
+  const data = await githubGraphql<{ node?: DetailNode | null }>(
+    token,
+    `
+    query($id: ID!) {
+      node(id: $id) {
+        ${typeSpread} {
+          ${COMMENT_FIELDS}
+          ${issueExtras}
+          ${TIMELINE_FIELDS}
+        }
+      }
+    }
+  `,
+    { id: contentId },
+    { allowErrors: true }
+  );
+
+  return parseDetailNode(data.node);
+}
+
+export async function addGithubIssueComment(
+  token: string,
+  contentId: string,
+  body: string
+): Promise<GithubCardComment> {
+  const text = body.trim();
+  if (!text) throw new Error('Comment required');
+
+  const data = await githubGraphql<{
+    addComment?: {
+      commentEdge?: {
+        node?: {
+          id?: string;
+          body?: string;
+          createdAt?: string;
+          author?: ActorLogin;
+        } | null;
+      } | null;
+    } | null;
+  }>(
+    token,
+    `
+    mutation($id: ID!, $body: String!) {
+      addComment(input: { subjectId: $id, body: $body }) {
+        commentEdge {
+          node {
+            id
+            body
+            createdAt
+            author { login }
+          }
+        }
+      }
+    }
+  `,
+    { id: contentId, body: text }
+  );
+
+  const node = data.addComment?.commentEdge?.node;
+  if (!node?.id || !node.body) {
+    throw new Error('GitHub comment create failed');
+  }
+
+  return {
+    id: node.id,
+    body: node.body,
+    createdAt: node.createdAt || '',
+    author: node.author?.login || 'unknown',
   };
 }

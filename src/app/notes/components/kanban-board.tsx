@@ -14,7 +14,8 @@ import {
   renameGithubCard,
   syncGithubProject,
 } from '@/app/notes/github/api';
-import { getGithubSession } from '@/app/notes/github/session';
+import { GithubCardDetailPanel } from '@/app/notes/components/github-card-detail';
+import { GithubCardMeta } from '@/app/notes/components/github-card-meta';
 import { parseBoard, serializeBoard } from '@/app/notes/helpers/board';
 import { newId } from '@/app/notes/sync/local';
 import type { BoardData } from '@/shared/types';
@@ -41,21 +42,23 @@ export function KanbanBoard({
     () => parseBoard(boardJson) ?? { v: 1, columns: [] }
   );
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
+  const [detailCardId, setDetailCardId] = useState<string | null>(null);
   const [dragCardId, setDragCardId] = useState<string | null>(null);
   const boardRef = useRef(board);
   const editingCardIdRef = useRef(editingCardId);
+  const detailCardIdRef = useRef(detailCardId);
   const dragCardIdRef = useRef(dragCardId);
   const onBoardChangeRef = useRef(onBoardChange);
   const onScheduleSaveRef = useRef(onScheduleSave);
   const linked = Boolean(
     board.github?.projectId &&
       board.github.org &&
-      board.github.projectNumber &&
-      board.github.token
+      board.github.projectNumber
   );
 
   boardRef.current = board;
   editingCardIdRef.current = editingCardId;
+  detailCardIdRef.current = detailCardId;
   dragCardIdRef.current = dragCardId;
   onBoardChangeRef.current = onBoardChange;
   onScheduleSaveRef.current = onScheduleSave;
@@ -66,28 +69,29 @@ export function KanbanBoard({
     let busy = false;
 
     async function pull() {
-      if (busy || editingCardIdRef.current || dragCardIdRef.current) return;
+      if (
+        busy ||
+        editingCardIdRef.current ||
+        detailCardIdRef.current ||
+        dragCardIdRef.current
+      ) {
+        return;
+      }
 
       const meta = boardRef.current.github;
-      if (!meta?.projectId || !meta.org || !meta.projectNumber || !meta.token)
-        return;
-
-      const token = getGithubSession(meta.projectId);
-      if (!token) return;
+      if (!meta?.projectId || !meta.org || !meta.projectNumber) return;
 
       busy = true;
 
       try {
-        const next = await syncGithubProject(
-          token,
-          meta.org,
-          meta.projectNumber
-        );
+        const next = await syncGithubProject({
+          org: meta.org,
+          project: meta.projectNumber,
+          projectId: meta.projectId,
+        });
         const merged = {
           ...next,
-          github: next.github
-            ? { ...next.github, token: meta.token }
-            : undefined,
+          github: next.github ?? meta,
         };
         const nextJson = serializeBoard(merged);
 
@@ -155,12 +159,9 @@ export function KanbanBoard({
     const projectId = board.github?.projectId;
     if (!projectId) return;
 
-    const token = getGithubSession(projectId);
-    if (!token) return;
-
     try {
       await renameGithubCard(
-        token,
+        projectId,
         card.contentId,
         card.contentType,
         card.title
@@ -176,13 +177,11 @@ export function KanbanBoard({
 
   function addCard(columnId: string) {
     const meta = board.github;
-    const token = meta?.projectId ? getGithubSession(meta.projectId) : null;
 
-    if (meta?.projectId && token) {
+    if (meta?.projectId) {
       void (async () => {
         try {
           const created = await addGithubCard(
-            token,
             meta.projectId,
             'Untitled',
             meta.viewerId,
@@ -255,13 +254,9 @@ export function KanbanBoard({
       ),
     });
 
-    const token = board.github?.projectId
-      ? getGithubSession(board.github.projectId)
-      : null;
+    if (!board.github?.projectId || !card?.contentId) return;
 
-    if (!board.github?.projectId || !card?.contentId || !token) return;
-
-    void deleteGithubCard(token, board.github.projectId, cardId).catch(
+    void deleteGithubCard(board.github.projectId, cardId).catch(
       (caughtError: unknown) => {
         window.alert(
           caughtError instanceof Error
@@ -321,21 +316,18 @@ export function KanbanBoard({
 
     const meta = board.github;
     const optionId = meta?.statusOptions?.[toColumnId];
-    const token = meta?.projectId ? getGithubSession(meta.projectId) : null;
 
     if (
       fromColumn?.id === toColumnId ||
       !moving.contentId ||
       !meta?.projectId ||
       !meta.statusFieldId ||
-      !optionId ||
-      !token
+      !optionId
     ) {
       return;
     }
 
     void moveGithubCard(
-      token,
       meta.projectId,
       cardId,
       meta.statusFieldId,
@@ -373,8 +365,31 @@ export function KanbanBoard({
     }
   }
 
+  function openCard(card: BoardCard) {
+    if (card.contentId) {
+      setDetailCardId(card.id);
+      return;
+    }
+
+    setEditingCardId(card.id);
+  }
+
+  const detailCard =
+    detailCardId == null
+      ? null
+      : board.columns
+          .flatMap((column) => column.cards)
+          .find((card) => card.id === detailCardId) ?? null;
+
+  const detailColumnId =
+    detailCard == null
+      ? null
+      : board.columns.find((column) =>
+          column.cards.some((card) => card.id === detailCard.id)
+        )?.id ?? null;
+
   return (
-    <div className="mt-3 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-1 md:flex-row md:overflow-x-auto md:overflow-y-hidden">
+    <div className="relative mt-3 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pb-1 md:flex-row md:overflow-x-auto md:overflow-y-hidden">
       {board.columns.map((column) => (
         <section
           key={column.id}
@@ -399,7 +414,7 @@ export function KanbanBoard({
               }
               className="min-w-0 flex-1 border-0 bg-transparent px-1 text-sm font-semibold text-[var(--ink)] outline-none"
             />
-            <span className="mt-0.5 px-1 text-xs tabular-nums text-[var(--mute)]">
+            <span className="mt-0.5 px-1 text-xs tabular-nums text-[var(--ink-soft)]">
               {column.cards.length}
             </span>
             <button
@@ -436,7 +451,7 @@ export function KanbanBoard({
                   moveCard(cardId, column.id, card.id);
                   setDragCardId(null);
                 }}
-                className={`group rounded-[10px] border border-[var(--line-soft)] bg-[var(--panel)] px-2.5 py-2 shadow-[0_1px_0_color-mix(in_oklab,var(--ink)_4%,transparent)] ${
+                className={`cursor-pointer rounded-[10px] border border-[var(--line-soft)] bg-[var(--panel)] px-2.5 py-2 shadow-[0_1px_0_color-mix(in_oklab,var(--ink)_4%,transparent)] transition-[transform,border-color,background-color] duration-200 ease-out hover:-translate-y-px hover:border-[var(--line)] hover:bg-[color-mix(in_oklab,var(--accent-soft)_35%,var(--panel))] ${
                   dragCardId === card.id ? 'opacity-50' : ''
                 }`}
               >
@@ -464,25 +479,23 @@ export function KanbanBoard({
                 ) : (
                   <button
                     type="button"
-                    onClick={() => setEditingCardId(card.id)}
-                    className="w-full text-left"
+                    onClick={() => openCard(card)}
+                    className="w-full cursor-pointer text-left"
                   >
                     <p className="m-0 text-[13px] leading-snug text-[var(--ink)]">
                       {card.title || 'Untitled card'}
                     </p>
-                    <p className="m-0 mt-1.5 text-[11px] text-[var(--mute)]">
+                    <GithubCardMeta
+                      state={card.state}
+                      labels={card.labels}
+                      assignees={card.assignees}
+                      dense
+                    />
+                    <p className="m-0 mt-1.5 text-[12px] text-[var(--ink-soft)]">
                       {label} · {card.id.slice(0, 8)}
                     </p>
                   </button>
                 )}
-                <button
-                  type="button"
-                  aria-label="Delete card"
-                  onClick={() => deleteCard(column.id, card.id)}
-                  className="mt-1 hidden text-[11px] text-[var(--mute)] hover:text-[var(--danger)] group-hover:inline"
-                >
-                  Delete
-                </button>
               </li>
             ))}
           </ul>
@@ -504,6 +517,24 @@ export function KanbanBoard({
       >
         + Add another list
       </button>
+
+      {detailCard ? (
+        <GithubCardDetailPanel
+          card={detailCard}
+          projectId={board.github?.projectId ?? null}
+          columnId={detailColumnId}
+          onClose={() => setDetailCardId(null)}
+          onEditTitle={() => {
+            setDetailCardId(null);
+            setEditingCardId(detailCard.id);
+          }}
+          onDelete={() => {
+            if (!detailColumnId) return;
+            deleteCard(detailColumnId, detailCard.id);
+            setDetailCardId(null);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

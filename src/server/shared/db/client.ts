@@ -70,6 +70,13 @@ export async function ensureSchema(): Promise<void> {
         mtime INTEGER NOT NULL,
         PRIMARY KEY (user_id, name)
       )`);
+
+      await db.execute(`CREATE TABLE IF NOT EXISTS github_tokens (
+        user_id TEXT NOT NULL,
+        project_id TEXT NOT NULL,
+        token_enc TEXT NOT NULL,
+        PRIMARY KEY (user_id, project_id)
+      )`);
     })();
   }
 
