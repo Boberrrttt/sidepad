@@ -11,6 +11,9 @@ import type { BoardData, GithubCardDetail } from '@/shared/types';
 
 type BoardCard = BoardData['columns'][number]['cards'][number];
 
+const sectionTitle =
+  'm-0 text-[13px] font-bold uppercase tracking-wide text-[var(--ink-soft)]';
+
 type GithubCardDetailPanelProps = {
   card: BoardCard;
   projectId: string | null;
@@ -212,7 +215,7 @@ export function GithubCardDetailPanel({
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-3">
+        <div className="min-h-0 flex-1 space-y-8 overflow-y-auto px-4 py-5">
           {error ? (
             <p className="m-0 rounded-[10px] bg-[var(--line-soft)] px-3 py-2 text-[12px] text-[var(--danger)]">
               {error}
@@ -221,10 +224,10 @@ export function GithubCardDetailPanel({
 
           {card.fields?.length ? (
             <section>
-              <h3 className="m-0 text-[11px] font-semibold uppercase tracking-wide text-[var(--mute)]">
+              <h3 className={sectionTitle}>
                 Fields
               </h3>
-              <dl className="mt-2 m-0 grid gap-2">
+              <dl className="mt-3 m-0 grid gap-3">
                 {card.fields.map((field) => (
                   <div
                     key={`${field.name}:${field.value}`}
@@ -239,17 +242,17 @@ export function GithubCardDetailPanel({
           ) : null}
 
           <section>
-            <h3 className="m-0 text-[11px] font-semibold uppercase tracking-wide text-[var(--mute)]">
+            <h3 className={sectionTitle}>
               Description
             </h3>
             {body ? (
               <GithubHtml
                 markdown={body}
                 projectId={projectId}
-                className="note-preview mt-2 text-[14px] leading-relaxed text-[var(--ink)]"
+                className="note-preview mt-3 text-[14px] leading-relaxed text-[var(--ink)]"
               />
             ) : (
-              <p className="mt-2 m-0 text-[13px] text-[var(--mute)]">
+              <p className="mt-3 m-0 text-[13px] text-[var(--mute)]">
                 No description.
               </p>
             )}
@@ -257,10 +260,10 @@ export function GithubCardDetailPanel({
 
           {linkedPullRequests.length > 0 ? (
             <section>
-              <h3 className="m-0 text-[11px] font-semibold uppercase tracking-wide text-[var(--mute)]">
+              <h3 className={sectionTitle}>
                 Linked PRs
               </h3>
-              <ul className="mt-2 m-0 list-none space-y-2 p-0">
+              <ul className="mt-3 m-0 list-none space-y-3 p-0">
                 {linkedPullRequests.map((pull) => (
                   <li key={pull.number}>
                     <a
@@ -284,44 +287,44 @@ export function GithubCardDetailPanel({
           ) : null}
 
           <section>
-            <h3 className="m-0 text-[11px] font-semibold uppercase tracking-wide text-[var(--mute)]">
+            <h3 className={sectionTitle}>
               Timeline
             </h3>
             {loading && !timeline.length ? (
-              <p className="mt-2 m-0 text-[13px] text-[var(--mute)]">Loading…</p>
+              <p className="mt-3 m-0 text-[13px] text-[var(--mute)]">Loading…</p>
             ) : timeline.length ? (
-              <ol className="mt-2 m-0 list-none space-y-2 border-l border-[var(--line)] p-0 pl-3">
+              <ol className="mt-3 m-0 list-none space-y-4 border-l border-[var(--line)] p-0 pl-3">
                 {timeline.map((item) => (
                   <li key={item.id} className="relative">
                     <span className="absolute -left-[0.91rem] top-1.5 h-2 w-2 rounded-full bg-[var(--line)]" />
                     <p className="m-0 text-[14px] text-[var(--ink)]">
                       {item.text}
                     </p>
-                    <p className="m-0 mt-0.5 text-[12px] text-[var(--ink-soft)]">
+                    <p className="m-0 mt-1 text-[12px] text-[var(--ink-soft)]">
                       {formatWhen(item.at)}
                     </p>
                   </li>
                 ))}
               </ol>
             ) : (
-              <p className="mt-2 m-0 text-[13px] text-[var(--mute)]">
+              <p className="mt-3 m-0 text-[13px] text-[var(--mute)]">
                 No timeline events.
               </p>
             )}
           </section>
 
           <section>
-            <h3 className="m-0 text-[11px] font-semibold uppercase tracking-wide text-[var(--mute)]">
+            <h3 className={sectionTitle}>
               Comments
             </h3>
             {loading && !comments.length ? (
-              <p className="mt-2 m-0 text-[13px] text-[var(--mute)]">Loading…</p>
+              <p className="mt-3 m-0 text-[13px] text-[var(--mute)]">Loading…</p>
             ) : comments.length ? (
-              <ul className="mt-2 m-0 list-none space-y-3 p-0">
+              <ul className="mt-3 m-0 list-none space-y-4 p-0">
                 {comments.map((comment) => (
                   <li
                     key={comment.id}
-                    className="rounded-[10px] border border-[var(--line-soft)] px-3 py-2"
+                    className="rounded-[10px] border border-[var(--line-soft)] px-3 py-3"
                   >
                     <p className="m-0 text-[12px] text-[var(--ink-soft)]">
                       <span className="font-medium text-[var(--ink)]">
@@ -333,10 +336,10 @@ export function GithubCardDetailPanel({
                       <GithubHtml
                         markdown={comment.body}
                         projectId={projectId}
-                        className="note-preview mt-1.5 text-[14px] leading-relaxed text-[var(--ink)]"
+                        className="note-preview mt-2 text-[14px] leading-relaxed text-[var(--ink)]"
                       />
                     ) : (
-                      <p className="mt-1.5 m-0 text-[13px] text-[var(--mute)]">
+                      <p className="mt-2 m-0 text-[13px] text-[var(--mute)]">
                         Empty comment.
                       </p>
                     )}
@@ -344,13 +347,13 @@ export function GithubCardDetailPanel({
                 ))}
               </ul>
             ) : (
-              <p className="mt-2 m-0 text-[13px] text-[var(--mute)]">
+              <p className="mt-3 m-0 text-[13px] text-[var(--mute)]">
                 No comments yet.
               </p>
             )}
 
             {canComment ? (
-              <div className="mt-3 space-y-2">
+              <div className="mt-4 space-y-2">
                 <textarea
                   value={commentDraft}
                   onChange={(event) => setCommentDraft(event.target.value)}

@@ -18,7 +18,7 @@ export function GithubCardMeta({
     : 'rounded-md px-1.5 py-0.5 text-[11px] font-medium';
 
   return (
-    <div className={`flex flex-wrap gap-1 ${dense ? 'mt-1.5' : 'mt-2'}`}>
+    <div className={`flex flex-wrap gap-1.5 ${dense ? 'mt-1.5' : 'mt-2.5'}`}>
       {state ? (
         <span
           className={`${chip} ${
