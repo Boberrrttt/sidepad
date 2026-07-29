@@ -97,15 +97,16 @@ export default function SidePad() {
   );
 
   const saveCurrent = useCallback(async () => {
-    const name = currentRef.current;
-    if (!name) return;
-
-    const bodySnapshot = bodyValueRef.current;
-    const boardSnapshot = boardValueRef.current;
-
     await runNoteOp(async () => {
+      const name = currentRef.current;
+      if (!name) return;
+
       flash('Saving...');
-      await writeNoteLocal(name, bodySnapshot, boardSnapshot);
+      await writeNoteLocal(
+        name,
+        bodyValueRef.current,
+        boardValueRef.current
+      );
       await refreshList();
       flash('Saved', 'ok');
     });
