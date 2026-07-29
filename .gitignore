@@ -1,6 +1,6 @@
 # dependencies
-/node_modules
-/.pnp
+node_modules/
+.pnp
 .pnp.*
 .yarn/*
 !.yarn/patches
@@ -9,15 +9,15 @@
 !.yarn/versions
 
 # testing
-/coverage
+coverage/
 
 # next.js
-/.next/
-/out/
+**/.next/
+**/out/
 
 # production
-/build
-/dist
+**/build/
+**/dist/
 
 # misc
 .DS_Store
@@ -31,15 +31,23 @@ yarn-error.log*
 # env
 .env
 .env*.local
+!**/.env.example
 
 # typescript
 *.tsbuildinfo
-next-env.d.ts
+**/next-env.d.ts
+
+# python
+**/__pycache__/
+**/*.py[cod]
+**/.venv/
+**/venv/
+**/*.egg-info/
 
 # PWA
-public/sw.js
-public/sw.js.map
-public/workbox-*.js
-public/workbox-*.js.map
-public/swe-worker-*.js
-public/swe-worker-*.js.map
+**/public/sw.js
+**/public/sw.js.map
+**/public/workbox-*.js
+**/public/workbox-*.js.map
+**/public/swe-worker-*.js
+**/public/swe-worker-*.js.map

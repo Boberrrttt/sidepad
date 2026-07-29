@@ -14,7 +14,7 @@ Write notes, ask AI about them, and keep everything in sync across phones and co
 
 ## Stack
 
-- Next.js App Router, TypeScript, Tailwind
+- Monorepo: `web` (Next.js), `backend` (FastAPI), `packages/shared`
 - Username/password auth with signed session cookies
 - Turso (libSQL) for server storage and sync
 - IndexedDB cache with last-write-wins sync
@@ -25,9 +25,10 @@ Write notes, ask AI about them, and keep everything in sync across phones and co
 
 ```bash
 npm install
+pip install -r backend/requirements.txt
 ```
 
-Copy these into `.env.local`:
+Copy env into `backend/.env`:
 
 ```env
 SESSION_SECRET=long-random-string
@@ -35,27 +36,23 @@ TURSO_DATABASE_URL=libsql://...
 TURSO_AUTH_TOKEN=...
 GROQ_API_KEY=...
 GROQ_MODEL=llama-3.3-70b-versatile
+PORT=3001
+```
+
+Copy env into `web/.env.local`:
+
+```env
+BACKEND_URL=http://localhost:3001
 ```
 
 ```bash
 npm run dev
 ```
 
-Open `http://localhost:3000`, then register or sign in.
+- Web: http://localhost:3000 (proxies `/api/*` to FastAPI)
+- Backend: http://localhost:3001
 
-## Scripts
-
-| Command | What it does |
-| --- | --- |
-| `npm run dev` | Local development |
-| `npm run build` | Production build (includes service worker) |
-| `npm start` | Serve the production build |
-
-## How sync works
-
-1. You edit a note locally (IndexedDB).
-2. Changes queue in an outbox.
-3. When online, SidePad flushes the outbox to Turso, then pulls the latest server state.
-4. Last write wins if two devices touch the same note.
-
-Ask needs network because it calls Groq. Notes and chats still load from the local cache when offline.
+```bash
+npm run build
+npm start
+```

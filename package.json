@@ -2,25 +2,19 @@
   "name": "sidepad",
   "version": "1.0.0",
   "private": true,
+  "workspaces": [
+    "web",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start"
-  },
-  "dependencies": {
-    "@ducanh2912/next-pwa": "^10.2.9",
-    "@libsql/client": "^0.15.15",
-    "marked": "^15.0.12",
-    "next": "^15.5.2",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1"
+    "dev": "concurrently -n backend,web -c blue,green \"npm run dev:backend\" \"npm run dev -w web\"",
+    "dev:web": "npm run dev -w web",
+    "dev:backend": "cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 3001",
+    "build": "npm run build -w @sidepad/shared && npm run build -w @sidepad/web",
+    "start": "concurrently -n backend,web -c blue,green \"npm run start:backend\" \"npm run start -w @sidepad/web\"",
+    "start:backend": "cd backend && uvicorn app.main:app --host 0.0.0.0 --port 3001"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.12",
-    "@types/node": "^22.17.2",
-    "@types/react": "^19.1.10",
-    "@types/react-dom": "^19.1.7",
-    "tailwindcss": "^4.1.12",
-    "typescript": "^5.9.2"
+    "concurrently": "^9.2.0"
   }
 }
