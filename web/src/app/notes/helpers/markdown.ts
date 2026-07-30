@@ -1,5 +1,5 @@
 import { marked } from 'marked';
-import { isGithubAssetUrl } from '@sidepad/shared';
+import { isGithubAssetUrl } from '@/app/shared/github-assets';
 
 export function toHtml(markdown: string) {
   return String(marked.parse(markdown, { async: false }));
@@ -35,6 +35,18 @@ export async function toGithubHtml(markdown: string, projectId: string | null) {
   return html;
 }
 
+function wrapMd(marker: string, inner: string): string {
+  if (!inner) return '';
+
+  if (marker === '*' && inner.startsWith('**') && inner.endsWith('**')) {
+    return `*${inner}*`;
+  }
+
+  if (inner.startsWith(marker) && inner.endsWith(marker)) return inner;
+
+  return `${marker}${inner}${marker}`;
+}
+
 export function htmlToMd(root: HTMLElement): string {
   function walk(node: Node): string {
     if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? '';
@@ -46,11 +58,11 @@ export function htmlToMd(root: HTMLElement): string {
       Array.from(element.childNodes).map(walk).join('');
 
     if (tag === 'br') return '\n';
-    if (tag === 'strong' || tag === 'b') return `**${childMarkdown()}**`;
-    if (tag === 'em' || tag === 'i') return `*${childMarkdown()}*`;
+    if (tag === 'strong' || tag === 'b') return wrapMd('**', childMarkdown());
+    if (tag === 'em' || tag === 'i') return wrapMd('*', childMarkdown());
     if (tag === 'u') return `<u>${childMarkdown()}</u>`;
     if (tag === 's' || tag === 'strike' || tag === 'del')
-      return `~~${childMarkdown()}~~`;
+      return wrapMd('~~', childMarkdown());
     if (tag === 'code') {
       return element.parentElement?.tagName.toLowerCase() === 'pre'
         ? childMarkdown()

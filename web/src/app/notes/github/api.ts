@@ -4,7 +4,7 @@ import type {
   GithubCardComment,
   GithubCardContentType,
   GithubCardDetail,
-} from '@sidepad/shared';
+} from '@/app/shared/types';
 
 export async function syncGithubProject(input: {
   org: string;

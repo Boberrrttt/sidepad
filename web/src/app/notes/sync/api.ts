@@ -13,7 +13,7 @@ import {
   replaceAllLocal,
   rewriteOutboxForRename,
 } from '@/app/notes/sync/local';
-import type { ChatMessage, Note } from '@sidepad/shared';
+import type { ChatMessage, Note } from '@/app/shared/types';
 
 async function pull(): Promise<void> {
   const response = await fetch('/api/sync');

@@ -8,6 +8,7 @@ import {
   useImperativeHandle,
   useRef,
   useState,
+  type KeyboardEvent,
 } from 'react';
 import { ConfirmModal } from '@/app/notes/components/confirm-modal';
 import { ConnectAppsModal } from '@/app/notes/components/connect-apps-modal';
@@ -109,6 +110,25 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
       document.execCommand(command);
       bodyRef.current?.focus();
       onEditorInput();
+    }
+
+    function onEditorKeyDown(event: KeyboardEvent<HTMLDivElement>) {
+      if (!(event.ctrlKey || event.metaKey)) return;
+
+      const key = event.key.toLowerCase();
+      let command: string | null = null;
+
+      if (event.shiftKey) {
+        if (key === 'x') command = 'strikeThrough';
+        else if (key === 'b') command = 'insertUnorderedList';
+      } else if (key === 'b') command = 'bold';
+      else if (key === 'i') command = 'italic';
+      else if (key === 'u') command = 'underline';
+
+      if (!command) return;
+
+      event.preventDefault();
+      format(command);
     }
 
     const words = wordCount(body);
@@ -256,22 +276,31 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
                   <div className="flex gap-0.5" role="toolbar" aria-label="Format">
                     {(
                       [
-                        ['bold', 'B'],
-                        ['italic', 'I'],
-                        ['underline', 'U'],
-                        ['strikeThrough', 'S'],
-                        ['insertUnorderedList', '•'],
+                        ['bold', 'B', 'Bold', 'Ctrl+B'],
+                        ['italic', 'I', 'Italic', 'Ctrl+I'],
+                        ['underline', 'U', 'Underline', 'Ctrl+U'],
+                        ['strikeThrough', 'S', 'Strikethrough', 'Ctrl+Shift+X'],
+                        ['insertUnorderedList', '•', 'Bulleted list', 'Ctrl+Shift+B'],
                       ] as const
-                    ).map(([command, label]) => (
-                      <button
-                        key={command}
-                        type="button"
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => format(command)}
-                        className={`h-8 min-w-8 rounded-lg px-2 text-sm font-semibold text-[var(--ink-soft)] transition-colors hover:bg-[var(--line-soft)] active:scale-[0.98]${command === 'strikeThrough' ? ' line-through' : ''}`}
-                      >
-                        {label}
-                      </button>
+                    ).map(([command, label, name, shortcut]) => (
+                      <span key={command} className="group relative">
+                        <button
+                          type="button"
+                          aria-keyshortcuts={shortcut}
+                          aria-label={`${name}, ${shortcut}`}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => format(command)}
+                          className={`h-8 min-w-8 rounded-lg px-2 text-sm font-semibold text-[var(--ink-soft)] transition-colors hover:bg-[var(--line-soft)] active:scale-[0.98]${command === 'strikeThrough' ? ' line-through' : ''}`}
+                        >
+                          {label}
+                        </button>
+                        <span
+                          role="tooltip"
+                          className="pointer-events-none absolute left-1/2 top-full z-10 mt-1.5 -translate-x-1/2 rounded-md bg-[var(--ink)] px-2 py-1 text-[11px] font-medium tracking-wide text-[var(--paper)] opacity-0 shadow-[0_6px_16px_color-mix(in_oklab,var(--ink)_18%,transparent)] transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+                        >
+                          {shortcut}
+                        </span>
+                      </span>
                     ))}
                   </div>
                 </div>
@@ -285,6 +314,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
                   data-placeholder="Start writing"
                   className="note-preview note-editor mt-3 min-h-0 flex-1 overflow-auto bg-transparent py-1 text-[15px] leading-relaxed outline-none"
                   onInput={onEditorInput}
+                  onKeyDown={onEditorKeyDown}
                 />
               </>
             ) : (

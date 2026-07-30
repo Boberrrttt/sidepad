@@ -10,8 +10,8 @@ import {
   mirrorNoteFromServer,
   syncAll,
 } from '@/app/notes/sync/api';
-import { errorMessage } from '@sidepad/shared';
-import type { ChatMessage } from '@sidepad/shared';
+import { errorMessage } from '@/app/shared/errors';
+import type { ChatMessage } from '@/app/shared/types';
 
 const PROMPTS = ['Summarize this note', 'Rewrite more clearly', 'Fill in gaps'];
 

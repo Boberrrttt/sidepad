@@ -8,7 +8,7 @@ import {
   disconnectLinkedNote,
   findLinkedNote,
 } from '@/app/notes/helpers/github-link';
-import type { BoardData } from '@sidepad/shared';
+import type { BoardData } from '@/app/shared/types';
 
 type ConnectAppsModalProps = {
   open: boolean;

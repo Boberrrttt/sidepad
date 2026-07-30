@@ -14,7 +14,7 @@ Write notes, ask AI about them, and keep everything in sync across phones and co
 
 ## Stack
 
-- Monorepo: `web` (Next.js), `backend` (FastAPI), `packages/shared`
+- Monorepo: `web` (Next.js), `backend` (FastAPI)
 - Username/password auth with signed session cookies
 - Turso (libSQL) for server storage and sync
 - IndexedDB cache with last-write-wins sync

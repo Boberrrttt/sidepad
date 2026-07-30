@@ -4,7 +4,7 @@ import { FormEvent, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { login, register } from '@/app/auth/api';
 import { setLocalUserId } from '@/app/shared/local-user';
-import { errorMessage } from '@sidepad/shared';
+import { errorMessage } from '@/app/shared/errors';
 
 export default function LoginPage() {
   const router = useRouter();

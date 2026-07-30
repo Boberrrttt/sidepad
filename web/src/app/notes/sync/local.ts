@@ -1,5 +1,5 @@
 import { getLocalUserId } from '@/app/shared/local-user';
-import type { Chat, Note, OutboxOp } from '@sidepad/shared';
+import type { Chat, Note, OutboxOp } from '@/app/shared/types';
 
 const DB_VERSION = 1;
 

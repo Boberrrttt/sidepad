@@ -1,4 +1,4 @@
-import type { BoardData } from '@sidepad/shared';
+import type { BoardData } from '@/app/shared/types';
 
 export function parseBoard(raw: string): BoardData | null {
   const trimmed = raw.trim();

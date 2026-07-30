@@ -1,4 +1,4 @@
-import type { AskEvent } from '@sidepad/shared';
+import type { AskEvent } from '@/app/shared/types';
 
 export async function* streamAsk(
   name: string,

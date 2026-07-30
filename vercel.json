@@ -4,7 +4,7 @@
       "root": "web/",
       "framework": "nextjs",
       "installCommand": "cd .. && npm install",
-      "buildCommand": "cd .. && npm run build -w @sidepad/shared && npm run build -w @sidepad/web",
+      "buildCommand": "cd .. && npm run build -w @sidepad/web",
       "bindings": [
         {
           "type": "service",

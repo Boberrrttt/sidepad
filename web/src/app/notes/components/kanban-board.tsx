@@ -18,7 +18,7 @@ import { GithubCardDetailPanel } from '@/app/notes/components/github-card-detail
 import { GithubCardMeta } from '@/app/notes/components/github-card-meta';
 import { parseBoard, serializeBoard } from '@/app/notes/helpers/board';
 import { newId } from '@/app/notes/sync/local';
-import type { BoardData } from '@sidepad/shared';
+import type { BoardData } from '@/app/shared/types';
 
 type BoardCard = BoardData['columns'][number]['cards'][number];
 

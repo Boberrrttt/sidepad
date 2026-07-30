@@ -7,7 +7,7 @@ import {
 } from '@/app/notes/github/api';
 import { GithubCardMeta } from '@/app/notes/components/github-card-meta';
 import { toGithubHtml, toHtml } from '@/app/notes/helpers/markdown';
-import type { BoardData, GithubCardDetail } from '@sidepad/shared';
+import type { BoardData, GithubCardDetail } from '@/app/shared/types';
 
 type BoardCard = BoardData['columns'][number]['cards'][number];
 

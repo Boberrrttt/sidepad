@@ -1,7 +1,7 @@
 import { parseBoard, serializeBoard } from '@/app/notes/helpers/board';
 import { disconnectGithubProject } from '@/app/notes/github/api';
 import { listNotesLocal, writeNoteLocal } from '@/app/notes/sync/api';
-import type { BoardData, Note } from '@sidepad/shared';
+import type { BoardData, Note } from '@/app/shared/types';
 
 export async function unlinkGithubBoard(
   board: BoardData | null,

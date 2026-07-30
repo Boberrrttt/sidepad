@@ -3,14 +3,13 @@
   "version": "1.0.0",
   "private": true,
   "workspaces": [
-    "web",
-    "packages/*"
+    "web"
   ],
   "scripts": {
     "dev": "concurrently -n backend,web -c blue,green \"npm run dev:backend\" \"npm run dev -w web\"",
     "dev:web": "npm run dev -w web",
     "dev:backend": "cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 3001",
-    "build": "npm run build -w @sidepad/shared && npm run build -w @sidepad/web",
+    "build": "npm run build -w @sidepad/web",
     "start": "concurrently -n backend,web -c blue,green \"npm run start:backend\" \"npm run start -w @sidepad/web\"",
     "start:backend": "cd backend && uvicorn app.main:app --host 0.0.0.0 --port 3001"
   },

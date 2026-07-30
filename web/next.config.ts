@@ -10,7 +10,6 @@ const withPWA = withPWAInit({
 const backendUrl = process.env.BACKEND_URL || 'http://localhost:3001';
 
 const nextConfig: NextConfig = {
-  transpilePackages: ['@sidepad/shared'],
   async rewrites() {
     return [
       {

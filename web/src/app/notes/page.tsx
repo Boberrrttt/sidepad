@@ -23,8 +23,8 @@ import {
   clearLocalUserId,
   setLocalUserId,
 } from '@/app/shared/local-user';
-import { errorMessage } from '@sidepad/shared';
-import type { Note } from '@sidepad/shared';
+import { errorMessage } from '@/app/shared/errors';
+import type { Note } from '@/app/shared/types';
 
 export default function SidePad() {
   const [allNotes, setAllNotes] = useState<Note[]>([]);
