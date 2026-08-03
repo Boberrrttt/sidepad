@@ -13,6 +13,7 @@ import {
 import { ConfirmModal } from '@/app/notes/components/confirm-modal';
 import { ConnectAppsModal } from '@/app/notes/components/connect-apps-modal';
 import { KanbanBoard } from '@/app/notes/components/kanban-board';
+import { Mascot } from '@/app/notes/components/mascot';
 import { parseBoard } from '@/app/notes/helpers/board';
 import { unlinkGithubBoard } from '@/app/notes/helpers/github-link';
 import { htmlToMd } from '@/app/notes/helpers/markdown';
@@ -137,9 +138,15 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
     const noteGithub = boardData?.github;
 
     return (
-      <main className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--paper)]" aria-label="Note editor">
+      <main
+        className="relative flex min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--paper)]"
+        aria-label="Note editor"
+      >
         {isEmpty ? (
           <div className="m-auto max-w-sm px-6 text-center">
+            <div className="mb-5 flex justify-center">
+              <Mascot mood="empty" size="lg" />
+            </div>
             <h1 className="m-0 text-3xl font-bold tracking-tight text-[var(--forest)]">
               Your pad is empty
             </h1>
@@ -329,7 +336,7 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
 
             <div className="mt-3 flex items-center justify-between gap-3 border-t border-[var(--line-soft)] pt-3">
               <p
-                className={`m-0 text-sm ${
+                className={`m-0 truncate text-sm ${
                   statusKind === 'error'
                     ? 'text-[var(--danger)]'
                     : statusKind === 'ok'
@@ -353,6 +360,20 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
                   Delete
                 </button>
               </div>
+            </div>
+
+            <div className="pointer-events-none absolute bottom-14 right-6 z-10">
+              <Mascot
+                key={`${statusKind}:${status}`}
+                size="lg"
+                mood={
+                  statusKind === 'error'
+                    ? 'worried'
+                    : statusKind === 'ok'
+                      ? 'happy'
+                      : 'idle'
+                }
+              />
             </div>
           </div>
         )}

@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { AskPanel } from '@/app/notes/components/ask-panel';
 import { ConfirmModal } from '@/app/notes/components/confirm-modal';
+import { Mascot } from '@/app/notes/components/mascot';
 import { NoteEditor, type NoteEditorHandle } from '@/app/notes/components/note-editor';
 import { PromptModal } from '@/app/notes/components/prompt-modal';
 import { parseBoard } from '@/app/notes/helpers/board';
@@ -553,11 +554,27 @@ export default function SidePad() {
         }`}
       >
         <div className="flex items-start justify-between gap-2 px-2 pb-4 pt-7">
-          <div>
-            <p className="m-0 text-[26px] font-bold leading-none tracking-tight">SidePad</p>
-            <p className="mt-2 max-w-[16ch] text-[13px] leading-snug text-[var(--sidebar-fg)]/55">
-              Notes that stay with you
-            </p>
+          <div className="flex min-w-0 items-start gap-2.5">
+            <Mascot
+              key={`${statusKind}:${status}`}
+              mood={
+                statusKind === 'error'
+                  ? 'worried'
+                  : statusKind === 'ok'
+                    ? 'happy'
+                    : 'idle'
+              }
+              size="md"
+              tone="sidebar"
+            />
+            <div className="min-w-0 pt-1">
+              <p className="m-0 text-[26px] font-bold leading-none tracking-tight">
+                SidePad
+              </p>
+              <p className="mt-2 max-w-[12ch] text-[13px] leading-snug text-[var(--sidebar-fg)]/55">
+                Notes that stay with you
+              </p>
+            </div>
           </div>
           <button
             type="button"

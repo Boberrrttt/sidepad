@@ -128,6 +128,116 @@ body {
   .modal-success-enter {
     animation: modal-success-in 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
+
+  .mascot--idle {
+    animation: mascot-hello 7.5s ease-in-out infinite;
+  }
+
+  .mascot--empty {
+    animation: mascot-hello 8.5s ease-in-out infinite;
+  }
+
+  .mascot--happy {
+    animation: mascot-bounce 720ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .mascot--worried {
+    animation: mascot-shake 520ms ease-in-out;
+  }
+}
+
+.mascot {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  transform-origin: 50% 88%;
+  will-change: transform;
+}
+
+.mascot svg {
+  display: block;
+  overflow: visible;
+}
+
+@keyframes mascot-hello {
+  0%,
+  100% {
+    transform: translateY(0) rotate(0deg);
+  }
+
+  8% {
+    transform: translateY(-3px) rotate(0deg);
+  }
+
+  14% {
+    transform: translateY(-2px) rotate(-14deg);
+  }
+
+  20% {
+    transform: translateY(-4px) rotate(12deg);
+  }
+
+  26% {
+    transform: translateY(-2px) rotate(-11deg);
+  }
+
+  32% {
+    transform: translateY(-3px) rotate(8deg);
+  }
+
+  38% {
+    transform: translateY(0) rotate(0deg);
+  }
+
+  58% {
+    transform: translateY(-4px) rotate(0deg);
+  }
+
+  78% {
+    transform: translateY(-1px) rotate(1deg);
+  }
+}
+
+@keyframes mascot-bounce {
+  0% {
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+
+  30% {
+    transform: translateY(-10px) scale(1.05) rotate(-4deg);
+  }
+
+  55% {
+    transform: translateY(-2px) scale(1.02) rotate(3deg);
+  }
+
+  100% {
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+}
+
+@keyframes mascot-shake {
+  0%,
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+
+  20% {
+    transform: translateX(-4px) rotate(-6deg);
+  }
+
+  40% {
+    transform: translateX(4px) rotate(5deg);
+  }
+
+  60% {
+    transform: translateX(-3px) rotate(-3deg);
+  }
+
+  80% {
+    transform: translateX(2px) rotate(2deg);
+  }
 }
 
 .note-preview h1,
