@@ -9,6 +9,8 @@ from app.chat import service as chat_service
 from app.notes import service as notes_service
 from app.shared.exceptions import DomainError
 
+MAX_HISTORY = 6
+
 
 def run_ask(
     user_id: str,
@@ -39,7 +41,7 @@ def run_ask(
             "role": "system",
             "content": prompts.system_prompt(name, body),
         },
-        *history,
+        *history[-MAX_HISTORY:],
         user_message,
     ]
 
