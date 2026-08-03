@@ -9,8 +9,16 @@ import {
   type MouseEvent,
 } from 'react';
 import { AskPanel } from '@/app/notes/components/ask-panel';
+import { ConfirmModal } from '@/app/notes/components/confirm-modal';
 import { NoteEditor, type NoteEditorHandle } from '@/app/notes/components/note-editor';
+import { PromptModal } from '@/app/notes/components/prompt-modal';
 import { parseBoard } from '@/app/notes/helpers/board';
+import {
+  basename,
+  buildNoteTree,
+  dirname,
+  type NoteTreeNode,
+} from '@/app/notes/helpers/note-path';
 import { getMe, logout as logoutSession } from '@/app/auth/api';
 import {
   deleteNoteLocal,
@@ -26,6 +34,32 @@ import {
 import { errorMessage } from '@/app/shared/errors';
 import type { Note } from '@/app/shared/types';
 
+const COLLAPSED_FOLDERS_KEY = 'sidepad-collapsed-folders';
+
+function loadCollapsedFolders(): Set<string> {
+  try {
+    const raw = localStorage.getItem(COLLAPSED_FOLDERS_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.filter((entry) => typeof entry === 'string'));
+  } catch {
+    return new Set();
+  }
+}
+
+function uniqueNoteName(taken: Set<string>, folderPath: string): string {
+  const base = folderPath ? `${folderPath}/New Note` : 'New Note';
+  if (!taken.has(base)) return base;
+
+  for (let suffix = 2; ; suffix++) {
+    const candidate = folderPath
+      ? `${folderPath}/New Note ${suffix}`
+      : `New Note ${suffix}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}
+
 export default function SidePad() {
   const [allNotes, setAllNotes] = useState<Note[]>([]);
   const [current, setCurrent] = useState<string | null>(null);
@@ -40,7 +74,11 @@ export default function SidePad() {
   const [isMobile, setIsMobile] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [confirmName, setConfirmName] = useState<string | null>(null);
+  const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
   const [isReady, setIsReady] = useState(false);
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(
+    () => new Set()
+  );
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentRef = useRef<string | null>(null);
@@ -86,7 +124,7 @@ export default function SidePad() {
       }
 
       setCurrent(name);
-      setTitle(name);
+      setTitle(basename(name));
       setBody(nextBody);
       setBoard(nextBoard);
       flash('Editing');
@@ -144,6 +182,7 @@ export default function SidePad() {
     setIsSidebarCollapsed(
       sidebarStored === '1' || (sidebarStored === null && mobile)
     );
+    setCollapsedFolders(loadCollapsedFolders());
 
     (async () => {
       try {
@@ -225,18 +264,24 @@ export default function SidePad() {
 
   const isDrawerOpen = isMobile && (!isSidebarCollapsed || !isChatCollapsed);
 
+  function toggleFolder(path: string) {
+    setCollapsedFolders((previous) => {
+      const next = new Set(previous);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      localStorage.setItem(COLLAPSED_FOLDERS_KEY, JSON.stringify([...next]));
+      return next;
+    });
+  }
+
   async function createNote() {
     const taken = new Set(allNotes.map((note) => note.name));
-    let name = 'New Note';
-
-    for (let suffix = 2; taken.has(name); suffix++) {
-      name = `New Note ${suffix}`;
-    }
+    const name = uniqueNoteName(taken, '');
 
     await runNoteOp(async () => {
       await writeNoteLocal(name, '', '');
       setCurrent(name);
-      setTitle(name);
+      setTitle(basename(name));
       setBody('');
       setBoard('');
       flash('Created', 'ok');
@@ -245,17 +290,63 @@ export default function SidePad() {
     });
   }
 
+  async function createFolder(folderName: string) {
+    const folderPath = folderName
+      .replace(/\\/g, '/')
+      .replace(/^\/+|\/+$/g, '')
+      .split('/')
+      .map((segment) => segment.trim())
+      .join('/');
+
+    if (
+      !folderPath ||
+      folderPath.split('/').some(
+        (segment) => !segment || segment === '.' || segment === '..'
+      )
+    ) {
+      throw new Error('Use a name, or nest with / like Work/Q1');
+    }
+
+    const taken = new Set(allNotes.map((note) => note.name));
+    const name = uniqueNoteName(taken, folderPath);
+
+    await runNoteOp(async () => {
+      await writeNoteLocal(name, '', '');
+      setCollapsedFolders((previous) => {
+        const next = new Set(previous);
+        next.delete(folderPath);
+        localStorage.setItem(COLLAPSED_FOLDERS_KEY, JSON.stringify([...next]));
+        return next;
+      });
+      setCurrent(name);
+      setTitle(basename(name));
+      setBody('');
+      setBoard('');
+      flash('Created', 'ok');
+      await refreshList();
+      await editorRef.current?.fill('');
+    });
+
+    setIsFolderModalOpen(false);
+  }
+
   async function commitTitle() {
     if (committingTitleRef.current) return;
     committingTitleRef.current = true;
 
     try {
-      const name = title.trim().replace(/\.md$/i, '');
+      const leaf = title
+        .trim()
+        .replace(/\.md$/i, '')
+        .replace(/[\\/]+/g, '');
 
-      if (!name) {
-        setTitle(current || '');
+      if (!leaf || leaf === '.' || leaf === '..') {
+        setTitle(current ? basename(current) : '');
         return;
       }
+
+      const folder = current ? dirname(current) : '';
+      const name = folder ? `${folder}/${leaf}` : leaf;
 
       if (saveTimer.current) {
         clearTimeout(saveTimer.current);
@@ -273,6 +364,7 @@ export default function SidePad() {
             boardValueRef.current
           );
           setCurrent(name);
+          setTitle(basename(name));
           flash('Created', 'ok');
         } else if (name !== from) {
           flash('Saving...');
@@ -283,7 +375,7 @@ export default function SidePad() {
           );
           const next = await renameNoteLocal(from, name);
           setCurrent(next);
-          setTitle(next);
+          setTitle(basename(next));
           flash('Renamed', 'ok');
         }
 
@@ -330,7 +422,79 @@ export default function SidePad() {
     );
   });
 
+  const noteTree = buildNoteTree(filtered);
+  const isSearching = Boolean(search.trim());
   const isEmpty = !current;
+
+  function renderTreeNodes(nodes: NoteTreeNode[]) {
+    return nodes.map((node) => {
+      if (node.kind === 'folder') {
+        const isCollapsed = !isSearching && collapsedFolders.has(node.path);
+
+        return (
+          <li key={`folder:${node.path}`} className="relative">
+            <button
+              type="button"
+              aria-expanded={!isCollapsed}
+              onClick={() => toggleFolder(node.path)}
+              className="flex w-full items-center gap-1.5 rounded-[var(--radius)] py-1.5 pl-1.5 pr-2 text-left text-[13px] font-medium text-[var(--sidebar-fg)]/65 transition-colors hover:bg-white/7 hover:text-[var(--sidebar-fg)]/90 active:scale-[0.99]"
+            >
+              <span
+                aria-hidden="true"
+                className={`inline-block w-3 shrink-0 text-center text-[10px] leading-none opacity-50 transition-transform duration-150 ${
+                  isCollapsed ? '' : 'rotate-90'
+                }`}
+              >
+                ▸
+              </span>
+              <span className="truncate">{node.name}</span>
+            </button>
+            {isCollapsed ? null : (
+              <ul className="m-0 ml-[11px] list-none border-l border-[color-mix(in_oklab,var(--sidebar-fg)_14%,transparent)] py-0.5 pl-2">
+                {renderTreeNodes(node.children)}
+              </ul>
+            )}
+          </li>
+        );
+      }
+
+      return (
+        <li key={node.name} className="group relative">
+          <button
+            type="button"
+            onClick={() =>
+              openNote(node.name)
+                .then(() => {
+                  if (isMobile) toggleSidebar(true);
+                })
+                .catch((caughtError) =>
+                  flash(errorMessage(caughtError), 'error')
+                )
+            }
+            className={`flex w-full items-center gap-1.5 rounded-[var(--radius)] py-1.5 pl-1.5 pr-9 text-left text-sm transition-colors active:scale-[0.99] ${
+              node.name === current
+                ? 'bg-white/14 font-semibold text-[var(--sidebar-fg)]'
+                : 'text-[var(--sidebar-fg)]/90 hover:bg-white/7'
+            }`}
+          >
+            <span aria-hidden="true" className="inline-block w-3 shrink-0" />
+            <span className="truncate">{node.label}</span>
+          </button>
+          <button
+            type="button"
+            aria-label={`Delete ${node.name}`}
+            onClick={(event: MouseEvent) => {
+              event.stopPropagation();
+              setConfirmName(node.name);
+            }}
+            className="absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-[var(--radius)] text-base text-[var(--sidebar-fg)]/40 opacity-0 transition-[opacity,transform,background-color,color] hover:bg-white/10 hover:text-[var(--sidebar-fg)] group-hover:opacity-100 group-focus-within:opacity-100 active:scale-[0.98] focus-visible:opacity-100"
+          >
+            ×
+          </button>
+        </li>
+      );
+    });
+  }
 
   function onGlobalKey(event: KeyboardEvent | globalThis.KeyboardEvent) {
     if (confirmName) {
@@ -405,17 +569,27 @@ export default function SidePad() {
           </button>
         </div>
 
-        <button
-          type="button"
-          onClick={() =>
-            createNote().catch((caughtError) =>
-              flash(errorMessage(caughtError), 'error')
-            )
-          }
-          className="mx-1 rounded-[var(--radius)] bg-[var(--accent)] px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--accent-press)] active:scale-[0.98]"
-        >
-          New note
-        </button>
+        <div className="mx-1 grid grid-cols-[1fr_auto] gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              createNote().catch((caughtError) =>
+                flash(errorMessage(caughtError), 'error')
+              )
+            }
+            className="rounded-[var(--radius)] bg-[var(--accent)] px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--accent-press)] active:scale-[0.98]"
+          >
+            New note
+          </button>
+          <button
+            type="button"
+            aria-label="New folder"
+            onClick={() => setIsFolderModalOpen(true)}
+            className="rounded-[var(--radius)] bg-white/10 px-3 py-2.5 text-sm font-medium text-[var(--sidebar-fg)]/85 transition-colors hover:bg-white/14 active:scale-[0.98]"
+          >
+            Folder
+          </button>
+        </div>
 
         <input
           type="search"
@@ -427,42 +601,15 @@ export default function SidePad() {
         />
 
         <div className="mt-3 min-h-0 flex-1 overflow-auto px-1">
-          <ul className="m-0 list-none p-0">
-            {filtered.map((note) => (
-              <li key={note.name} className="group relative mb-0.5">
-                <button
-                  type="button"
-                  onClick={() =>
-                    openNote(note.name)
-                      .then(() => {
-                        if (isMobile) toggleSidebar(true);
-                      })
-                      .catch((caughtError) =>
-                        flash(errorMessage(caughtError), 'error')
-                      )
-                  }
-                  className={`w-full rounded-[var(--radius)] px-3 py-2 pr-9 text-left text-sm transition-colors ${
-                    note.name === current
-                      ? 'bg-white/14 font-semibold'
-                      : 'hover:bg-white/7'
-                  }`}
-                >
-                  {note.name}
-                </button>
-                <button
-                  type="button"
-                  aria-label={`Delete ${note.name}`}
-                  onClick={(event: MouseEvent) => {
-                    event.stopPropagation();
-                    setConfirmName(note.name);
-                  }}
-                  className="absolute right-1 top-1/2 hidden h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-lg text-[var(--sidebar-fg)]/45 hover:bg-white/10 hover:text-[var(--sidebar-fg)] group-hover:flex"
-                >
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
+          {noteTree.length ? (
+            <ul className="m-0 flex list-none flex-col gap-px p-0">
+              {renderTreeNodes(noteTree)}
+            </ul>
+          ) : (
+            <p className="m-0 px-2 py-6 text-center text-[13px] leading-relaxed text-[var(--sidebar-fg)]/40">
+              {isSearching ? 'No notes match.' : 'No notes yet.'}
+            </p>
+          )}
         </div>
 
         <div className="mt-2 flex items-center justify-between gap-2 px-2 text-xs text-[var(--sidebar-fg)]/50">
@@ -492,7 +639,7 @@ export default function SidePad() {
         statusKind={statusKind}
         isChatCollapsed={isChatCollapsed}
         isSidebarCollapsed={isSidebarCollapsed}
-        onTitleChange={setTitle}
+        onTitleChange={(next) => setTitle(next.replace(/[\\/]/g, ''))}
         onCommitTitle={async () => {
           try {
             await commitTitle();
@@ -529,45 +676,34 @@ export default function SidePad() {
         }}
       />
 
-      {confirmName ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <button
-            type="button"
-            aria-label="Cancel"
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setConfirmName(null)}
-          />
-          <div
-            role="alertdialog"
-            aria-modal="true"
-            className="relative z-10 w-full max-w-sm rounded-[var(--radius)] bg-[var(--panel)] p-6 shadow-[0_24px_48px_rgba(14,20,17,0.22)]"
-          >
-            <p className="m-0 text-lg font-semibold">Delete note</p>
-            <p className="mt-2 text-sm text-[var(--mute)]">This cannot be undone.</p>
-            <p className="mt-3 font-medium">{confirmName}</p>
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setConfirmName(null)}
-                className="rounded-[var(--radius)] px-4 py-2 text-sm hover:bg-[var(--line-soft)]"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() =>
-                  deleteNoteByName(confirmName).catch((caughtError) =>
-                    flash(errorMessage(caughtError), 'error')
-                  )
-                }
-                className="rounded-[var(--radius)] bg-[var(--danger)] px-4 py-2 text-sm font-semibold text-white active:scale-[0.98]"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <PromptModal
+        open={isFolderModalOpen}
+        title="New folder"
+        body="Notes inside use path names like Work/Ideas."
+        label="Folder name"
+        placeholder="Work"
+        confirmLabel="Create"
+        onClose={() => setIsFolderModalOpen(false)}
+        onConfirm={createFolder}
+      />
+
+      <ConfirmModal
+        open={Boolean(confirmName)}
+        title="Delete note"
+        body={
+          confirmName
+            ? `Delete ${confirmName}? This cannot be undone.`
+            : 'This cannot be undone.'
+        }
+        confirmLabel="Delete"
+        onClose={() => setConfirmName(null)}
+        onConfirm={() => {
+          if (!confirmName) return;
+          deleteNoteByName(confirmName).catch((caughtError) =>
+            flash(errorMessage(caughtError), 'error')
+          );
+        }}
+      />
     </div>
   );
 }

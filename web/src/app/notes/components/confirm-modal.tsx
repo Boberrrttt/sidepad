@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect } from 'react';
+
 type ConfirmModalProps = {
   open: boolean;
   title: string;
@@ -21,6 +23,18 @@ export function ConfirmModal({
   onClose,
   onConfirm,
 }: ConfirmModalProps) {
+  useEffect(() => {
+    if (!open) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') onClose();
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   const isSuccess = tone === 'accent';
@@ -34,14 +48,14 @@ export function ConfirmModal({
       <button
         type="button"
         aria-label="Close"
-        className={`absolute inset-0 bg-black/40 ${isSuccess ? 'modal-success-backdrop' : ''}`}
+        className="absolute inset-0 bg-black/40 modal-success-backdrop"
         onClick={onClose}
       />
       <div
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`relative z-10 w-full max-w-sm rounded-[var(--radius)] bg-[var(--panel)] p-6 shadow-[0_24px_48px_rgba(14,20,17,0.22)] ${isSuccess ? 'modal-success-enter' : ''}`}
+        className="relative z-10 w-full max-w-sm rounded-[var(--radius)] bg-[var(--panel)] p-6 shadow-[0_24px_48px_rgba(14,20,17,0.22)] modal-success-enter"
       >
         <p className="m-0 text-lg font-semibold text-[var(--ink)]">{title}</p>
         <p className="mt-2 m-0 text-sm leading-relaxed text-[var(--mute)]">
