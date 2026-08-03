@@ -24,7 +24,7 @@ export function buildNoteTree(notes: Note[]): NoteTreeNode[] {
   };
 
   const rootFolders = new Map<string, FolderNode>();
-  const rootNotes: NoteTreeNode[] = [];
+  const rootNotes: Extract<NoteTreeNode, { kind: 'note' }>[] = [];
 
   function folderAt(
     parent: Map<string, FolderNode>,
