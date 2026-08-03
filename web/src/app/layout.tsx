@@ -14,7 +14,10 @@ export const metadata: Metadata = {
   applicationName: 'SidePad',
   manifest: '/manifest.webmanifest',
   icons: {
-    icon: [{ url: '/favicon.ico', sizes: 'any' }],
+    icon: [
+      { url: '/icons/icon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.ico', sizes: 'any' },
+    ],
     apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180' }],
   },
   appleWebApp: {
