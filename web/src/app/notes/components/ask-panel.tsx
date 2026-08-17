@@ -237,12 +237,12 @@ export function AskPanel({
 
   return (
     <aside
-      className={`flex min-h-0 min-w-0 flex-col overflow-hidden border-l border-[var(--line)] bg-[var(--panel)] transition-[opacity,transform] duration-200 ${
+      className={`flex min-h-0 min-w-0 flex-col overflow-hidden border-l border-[var(--line)] bg-[var(--panel)] transition-[opacity,transform,border-color] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${
         isCollapsed
-          ? 'pointer-events-none border-0 opacity-0'
+          ? 'pointer-events-none border-transparent opacity-0 translate-x-2'
           : isOverlay
-            ? 'fixed inset-y-0 right-0 z-40 w-[min(320px,90vw)] border-0 opacity-100 shadow-[-8px_0_32px_rgba(0,0,0,0.28)]'
-            : 'opacity-100'
+            ? 'fixed inset-y-0 right-0 z-40 w-[min(320px,90vw)] border-0 opacity-100 translate-x-0 shadow-[-8px_0_32px_rgba(0,0,0,0.28)]'
+            : 'opacity-100 translate-x-0'
       }`}
       aria-label="Note chat"
     >

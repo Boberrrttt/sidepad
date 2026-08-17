@@ -106,7 +106,6 @@ export default function SidePad() {
   const [passwordModalMode, setPasswordModalMode] = useState<'unlock' | null>(
     null
   );
-  const [isRemoveEncryptOpen, setIsRemoveEncryptOpen] = useState(false);
   const [isIncognito, setIsIncognito] = useState(false);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -332,6 +331,8 @@ export default function SidePad() {
   }, [flash, openNote, refreshList]);
 
   function toggleChat(collapsed: boolean) {
+    if (!collapsed && isIncognito) return;
+
     setIsChatCollapsed(collapsed);
     localStorage.setItem('sidepad-chat-collapsed', collapsed ? '1' : '0');
 
@@ -386,6 +387,7 @@ export default function SidePad() {
 
   async function enterIncognito() {
     setIsIncognito(true);
+    toggleChat(true);
 
     if (currentRef.current && !isNoteEncryptedRef.current) {
       await clearOpenNote();
@@ -396,6 +398,11 @@ export default function SidePad() {
 
   async function exitIncognito() {
     setIsIncognito(false);
+
+    if (currentRef.current && isNoteEncryptedRef.current) {
+      await clearOpenNote();
+    }
+
     flash('Incognito off');
   }
 
@@ -568,9 +575,9 @@ export default function SidePad() {
     setAllNotes(notes);
 
     if (current === name || !current) {
-      const nextNote = isIncognito
-        ? notes.find((note) => isEncryptedNote(note.body))
-        : notes[0];
+      const nextNote = notes.find(
+        (note) => isEncryptedNote(note.body) === isIncognito
+      );
 
       if (nextNote) await openNote(nextNote.name);
       else await clearOpenNote();
@@ -593,62 +600,14 @@ export default function SidePad() {
     await editorRef.current?.fill(unlocked.body);
   }
 
-  async function lockCurrent() {
-    const name = currentRef.current;
-    if (!name || !isNoteEncryptedRef.current) return;
-
-    if (saveTimer.current) {
-      clearTimeout(saveTimer.current);
-      saveTimer.current = null;
-    }
-
-    await saveCurrent();
-    clearUnlockEntry(name);
-    setIsNoteLocked(true);
-    setBody('');
-    setBoard('');
-    flash('Locked');
-    await editorRef.current?.fill('');
-  }
-
-  async function removeEncryption() {
-    const name = currentRef.current;
-    if (!name || !isNoteEncryptedRef.current || isNoteLocked) return;
-
-    const unlock = getUnlockEntry(name);
-    if (!unlock) return;
-
-    setIsRemoveEncryptOpen(false);
-
-    await runNoteOp(async () => {
-      await writeNoteLocal(
-        name,
-        bodyValueRef.current,
-        boardValueRef.current
-      );
-      clearUnlockEntry(name);
-      envelopeRef.current = '';
-      setIsNoteEncrypted(false);
-      setIsNoteLocked(false);
-      await refreshList();
-      flash('Encryption removed', 'ok');
-    });
-  }
-
   async function logout() {
     clearLocalUserId();
     await logoutSession();
     window.location.href = '/auth/login';
   }
 
-  const encryptedNames = new Set(
-    allNotes
-      .filter((note) => isEncryptedNote(note.body))
-      .map((note) => note.name)
-  );
-
   const filtered = allNotes.filter((note) => {
-    if (isIncognito && !isEncryptedNote(note.body)) return false;
+    if (isEncryptedNote(note.body) !== isIncognito) return false;
 
     const query = search.trim().toLowerCase();
     if (!query) return true;
@@ -659,7 +618,7 @@ export default function SidePad() {
     return note.body.toLowerCase().includes(query);
   });
 
-  const noteTree = buildNoteTree(filtered, encryptedNames);
+  const noteTree = buildNoteTree(filtered);
   const isSearching = Boolean(search.trim());
   const isEmpty = !current;
 
@@ -714,12 +673,6 @@ export default function SidePad() {
                 : 'text-[var(--sidebar-fg)]/90 hover:bg-white/7'
             }`}
           >
-            <span
-              aria-hidden="true"
-              className="inline-block w-3 shrink-0 text-center text-[11px] leading-none opacity-55"
-            >
-              {encryptedNames.has(node.name) ? '🔒' : ''}
-            </span>
             <span className="truncate">{node.label}</span>
           </button>
           <button
@@ -783,7 +736,7 @@ export default function SidePad() {
 
   return (
     <div
-      className={`grid h-full min-h-0 overflow-hidden transition-[grid-template-columns] duration-240 ease-[cubic-bezier(0.32,0.72,0,1)] ${gridCols}`}
+      className={`grid h-full min-h-0 overflow-hidden transition-[grid-template-columns] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] ${gridCols}`}
     >
       {isDrawerOpen ? (
         <button
@@ -971,12 +924,6 @@ export default function SidePad() {
           )
         }
         onRequestUnlock={() => setPasswordModalMode('unlock')}
-        onLock={() =>
-          lockCurrent().catch((caughtError) =>
-            flash(errorMessage(caughtError), 'error')
-          )
-        }
-        onRequestRemoveEncryption={() => setIsRemoveEncryptOpen(true)}
       />
 
       <AskPanel
@@ -1019,19 +966,6 @@ export default function SidePad() {
         inputType="password"
         onClose={() => setPasswordModalMode(null)}
         onConfirm={unlockCurrent}
-      />
-
-      <ConfirmModal
-        open={isRemoveEncryptOpen}
-        title="Remove encryption"
-        body="This note will be stored as plain text again on this device and in sync."
-        confirmLabel="Remove encryption"
-        onClose={() => setIsRemoveEncryptOpen(false)}
-        onConfirm={() => {
-          removeEncryption().catch((caughtError) =>
-            flash(errorMessage(caughtError), 'error')
-          );
-        }}
       />
 
       <ConfirmModal

@@ -45,8 +45,6 @@ type NoteEditorProps = {
   onRequestDelete: () => void;
   onCreateNote: () => void;
   onRequestUnlock: () => void;
-  onLock: () => void;
-  onRequestRemoveEncryption: () => void;
 };
 
 export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
@@ -73,8 +71,6 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
       onRequestDelete,
       onCreateNote,
       onRequestUnlock,
-      onLock,
-      onRequestRemoveEncryption,
     } = props;
 
     const bodyRef = useRef<HTMLDivElement>(null);
@@ -238,24 +234,6 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
               <div className="mt-1 flex shrink-0 items-center gap-2">
                 {!isLocked ? (
                   <>
-                    {isEncrypted ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={onLock}
-                          className="rounded-md px-2.5 py-1 text-[13px] font-medium text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--ink)] active:scale-[0.98]"
-                        >
-                          Lock
-                        </button>
-                        <button
-                          type="button"
-                          onClick={onRequestRemoveEncryption}
-                          className="rounded-md px-2.5 py-1 text-[13px] font-medium text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--ink)] active:scale-[0.98]"
-                        >
-                          Remove encryption
-                        </button>
-                      </>
-                    ) : null}
                     {viewMode === 'board' ? (
                       <>
                         {boardData?.columns.length ? (
