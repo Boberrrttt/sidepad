@@ -33,6 +33,8 @@ type NoteEditorProps = {
   statusKind: 'neutral' | 'ok' | 'error';
   isChatCollapsed: boolean;
   isSidebarCollapsed: boolean;
+  isEncrypted: boolean;
+  isLocked: boolean;
   onTitleChange: (title: string) => void;
   onCommitTitle: () => Promise<void>;
   onBodyChange: (body: string) => void;
@@ -42,6 +44,9 @@ type NoteEditorProps = {
   onOpenSidebar: () => void;
   onRequestDelete: () => void;
   onCreateNote: () => void;
+  onRequestUnlock: () => void;
+  onLock: () => void;
+  onRequestRemoveEncryption: () => void;
 };
 
 export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
@@ -56,6 +61,8 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
       statusKind,
       isChatCollapsed,
       isSidebarCollapsed,
+      isEncrypted,
+      isLocked,
       onTitleChange,
       onCommitTitle,
       onBodyChange,
@@ -65,6 +72,9 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
       onOpenSidebar,
       onRequestDelete,
       onCreateNote,
+      onRequestUnlock,
+      onLock,
+      onRequestRemoveEncryption,
     } = props;
 
     const bodyRef = useRef<HTMLDivElement>(null);
@@ -191,14 +201,20 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
                   </button>
                 ) : null}
                 {isChatCollapsed ? (
-                  <button
-                    type="button"
-                    aria-label="Show ask"
-                    onClick={onOpenAsk}
-                    className="ml-auto shrink-0 rounded-[var(--radius)] bg-[var(--accent-soft)] px-2.5 py-1.5 text-[13px] font-medium text-[var(--accent)] transition-colors hover:bg-[color-mix(in_oklab,var(--accent)_22%,var(--accent-soft))] active:scale-[0.98]"
-                  >
-                    Ask ›
-                  </button>
+                  isEncrypted ? (
+                    <p className="ml-auto m-0 shrink-0 px-2.5 py-1.5 text-[13px] text-[var(--mute)]">
+                      Encrypted notes cannot use Ask
+                    </p>
+                  ) : (
+                    <button
+                      type="button"
+                      aria-label="Show ask"
+                      onClick={onOpenAsk}
+                      className="ml-auto shrink-0 rounded-[var(--radius)] bg-[var(--accent-soft)] px-2.5 py-1.5 text-[13px] font-medium text-[var(--accent)] transition-colors hover:bg-[color-mix(in_oklab,var(--accent)_22%,var(--accent-soft))] active:scale-[0.98]"
+                    >
+                      Ask ›
+                    </button>
+                  )
                 ) : null}
               </div>
             ) : null}
@@ -216,68 +232,107 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
                 }}
                 placeholder="Untitled"
                 aria-label="Note title"
-                className="min-w-0 flex-1 border-0 bg-transparent text-[28px] font-semibold leading-tight tracking-tight text-[var(--ink)] outline-none placeholder:text-[var(--mute)]"
+                disabled={isLocked}
+                className="min-w-0 flex-1 border-0 bg-transparent text-[28px] font-semibold leading-tight tracking-tight text-[var(--ink)] outline-none placeholder:text-[var(--mute)] disabled:opacity-70"
               />
               <div className="mt-1 flex shrink-0 items-center gap-2">
-                {viewMode === 'board' ? (
+                {!isLocked ? (
                   <>
-                    {boardData?.columns.length ? (
-                      <button
-                        type="button"
-                        onClick={() => setClearBoardOpen(true)}
-                        className="rounded-md px-2.5 py-1 text-[13px] font-medium text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--danger)] active:scale-[0.98]"
-                      >
-                        Clear board
-                      </button>
+                    {isEncrypted ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={onLock}
+                          className="rounded-md px-2.5 py-1 text-[13px] font-medium text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--ink)] active:scale-[0.98]"
+                        >
+                          Lock
+                        </button>
+                        <button
+                          type="button"
+                          onClick={onRequestRemoveEncryption}
+                          className="rounded-md px-2.5 py-1 text-[13px] font-medium text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--ink)] active:scale-[0.98]"
+                        >
+                          Remove encryption
+                        </button>
+                      </>
                     ) : null}
-                    {noteGithub?.projectId ? (
-                      <button
-                        type="button"
-                        onClick={() => setDisconnectOpen(true)}
-                        className="rounded-md px-2.5 py-1 text-[13px] font-medium text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--danger)] active:scale-[0.98]"
-                      >
-                        Disconnect
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setConnectOpen(true)}
-                        className="rounded-md px-2.5 py-1 text-[13px] font-medium text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--ink)] active:scale-[0.98]"
-                      >
-                        Connect
-                      </button>
-                    )}
+                    {viewMode === 'board' ? (
+                      <>
+                        {boardData?.columns.length ? (
+                          <button
+                            type="button"
+                            onClick={() => setClearBoardOpen(true)}
+                            className="rounded-md px-2.5 py-1 text-[13px] font-medium text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--danger)] active:scale-[0.98]"
+                          >
+                            Clear board
+                          </button>
+                        ) : null}
+                        {noteGithub?.projectId ? (
+                          <button
+                            type="button"
+                            onClick={() => setDisconnectOpen(true)}
+                            className="rounded-md px-2.5 py-1 text-[13px] font-medium text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--danger)] active:scale-[0.98]"
+                          >
+                            Disconnect
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConnectOpen(true)}
+                            className="rounded-md px-2.5 py-1 text-[13px] font-medium text-[var(--mute)] transition-colors hover:bg-[var(--line-soft)] hover:text-[var(--ink)] active:scale-[0.98]"
+                          >
+                            Connect
+                          </button>
+                        )}
+                      </>
+                    ) : null}
+                    <div
+                      className="flex rounded-lg border border-[var(--line-soft)] p-0.5"
+                      role="group"
+                      aria-label="View mode"
+                    >
+                      {(
+                        [
+                          ['note', 'Note'],
+                          ['board', 'Board'],
+                        ] as const
+                      ).map(([mode, label]) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setViewMode(mode)}
+                          className={`rounded-md px-2.5 py-1 text-[13px] font-medium transition-colors active:scale-[0.98] ${
+                            viewMode === mode
+                              ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                              : 'text-[var(--mute)] hover:text-[var(--ink)]'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
                   </>
                 ) : null}
-                <div
-                  className="flex rounded-lg border border-[var(--line-soft)] p-0.5"
-                  role="group"
-                  aria-label="View mode"
-                >
-                  {(
-                    [
-                      ['note', 'Note'],
-                      ['board', 'Board'],
-                    ] as const
-                  ).map(([mode, label]) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setViewMode(mode)}
-                      className={`rounded-md px-2.5 py-1 text-[13px] font-medium transition-colors active:scale-[0.98] ${
-                        viewMode === mode
-                          ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
-                          : 'text-[var(--mute)] hover:text-[var(--ink)]'
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
               </div>
             </div>
 
-            {viewMode === 'note' ? (
+            {isLocked ? (
+              <div className="m-auto flex max-w-sm flex-1 flex-col items-center justify-center px-4 text-center">
+                <h2 className="m-0 text-2xl font-semibold tracking-tight text-[var(--forest)]">
+                  This note is locked
+                </h2>
+                <p className="mt-3 m-0 text-sm leading-relaxed text-[var(--mute)]">
+                  Enter the passphrase to read and edit it.
+                </p>
+                <button
+                  type="button"
+                  onClick={onRequestUnlock}
+                  className="mt-5 rounded-[var(--radius)] bg-[var(--accent)] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[var(--accent-press)] active:scale-[0.98]"
+                >
+                  Unlock
+                </button>
+              </div>
+            ) : viewMode === 'note' ? (
               <>
                 <div className="mt-4 flex items-center justify-between border-b border-[var(--line-soft)] pb-2">
                   <div className="flex gap-0.5" role="toolbar" aria-label="Format">

@@ -8,6 +8,12 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from 'react';
+import {
+  FolderPlus,
+  NotePencil,
+} from '@phosphor-icons/react';
+import { IncognitoIcon } from '@hugeicons/core-free-icons';
+import { HugeiconsIcon } from '@hugeicons/react';
 import { AskPanel } from '@/app/notes/components/ask-panel';
 import { ConfirmModal } from '@/app/notes/components/confirm-modal';
 import { Mascot } from '@/app/notes/components/mascot';
@@ -15,11 +21,26 @@ import { NoteEditor, type NoteEditorHandle } from '@/app/notes/components/note-e
 import { PromptModal } from '@/app/notes/components/prompt-modal';
 import { parseBoard } from '@/app/notes/helpers/board';
 import {
+  decryptNote,
+  decryptWithKey,
+  encryptNote,
+  encryptWithKey,
+  isEncryptedNote,
+} from '@/app/notes/helpers/note-crypto';
+import {
   basename,
   buildNoteTree,
   dirname,
   type NoteTreeNode,
 } from '@/app/notes/helpers/note-path';
+import {
+  clearUnlockEntry,
+  getDevicePassphrase,
+  getUnlockEntry,
+  renameUnlockEntry,
+  setUnlockEntry,
+  type UnlockEntry,
+} from '@/app/notes/helpers/unlock-session';
 import { getMe, logout as logoutSession } from '@/app/auth/api';
 import {
   deleteNoteLocal,
@@ -80,11 +101,20 @@ export default function SidePad() {
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(
     () => new Set()
   );
+  const [isNoteEncrypted, setIsNoteEncrypted] = useState(false);
+  const [isNoteLocked, setIsNoteLocked] = useState(false);
+  const [passwordModalMode, setPasswordModalMode] = useState<'unlock' | null>(
+    null
+  );
+  const [isRemoveEncryptOpen, setIsRemoveEncryptOpen] = useState(false);
+  const [isIncognito, setIsIncognito] = useState(false);
 
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentRef = useRef<string | null>(null);
   const bodyValueRef = useRef('');
   const boardValueRef = useRef('');
+  const isNoteEncryptedRef = useRef(false);
+  const envelopeRef = useRef('');
   const editorRef = useRef<NoteEditorHandle>(null);
   const noteOpRef = useRef(Promise.resolve());
   const committingTitleRef = useRef(false);
@@ -92,6 +122,7 @@ export default function SidePad() {
   currentRef.current = current;
   bodyValueRef.current = body;
   boardValueRef.current = board;
+  isNoteEncryptedRef.current = isNoteEncrypted;
 
   function runNoteOp(work: () => Promise<void>) {
     const next = noteOpRef.current.then(work, work);
@@ -118,7 +149,11 @@ export default function SidePad() {
       let nextBody = note?.body ?? '';
       let nextBoard = note?.board ?? '';
 
-      if (!nextBoard && parseBoard(nextBody)) {
+      if (
+        !isEncryptedNote(nextBody) &&
+        !nextBoard &&
+        parseBoard(nextBody)
+      ) {
         nextBoard = nextBody;
         nextBody = '';
         await writeNoteLocal(name, nextBody, nextBoard);
@@ -126,6 +161,48 @@ export default function SidePad() {
 
       setCurrent(name);
       setTitle(basename(name));
+
+      if (isEncryptedNote(nextBody)) {
+        envelopeRef.current = nextBody;
+        setIsNoteEncrypted(true);
+
+        const unlock = getUnlockEntry(name);
+
+        if (unlock) {
+          const payload = await decryptWithKey(unlock.key, nextBody);
+          setIsNoteLocked(false);
+          setBody(payload.body);
+          setBoard(payload.board);
+          flash('Editing');
+          setAllNotes(await listNotesLocal());
+          await editorRef.current?.fill(payload.body);
+          return;
+        }
+
+        try {
+          const unlocked = await decryptNote(getDevicePassphrase(), nextBody);
+          setUnlockEntry(name, { key: unlocked.key, salt: unlocked.salt });
+          setIsNoteLocked(false);
+          setBody(unlocked.body);
+          setBoard(unlocked.board);
+          flash('Editing');
+          setAllNotes(await listNotesLocal());
+          await editorRef.current?.fill(unlocked.body);
+          return;
+        } catch {
+          setIsNoteLocked(true);
+          setBody('');
+          setBoard('');
+          flash('Locked');
+          setAllNotes(await listNotesLocal());
+          await editorRef.current?.fill('');
+          return;
+        }
+      }
+
+      envelopeRef.current = '';
+      setIsNoteEncrypted(false);
+      setIsNoteLocked(false);
       setBody(nextBody);
       setBoard(nextBoard);
       flash('Editing');
@@ -135,23 +212,44 @@ export default function SidePad() {
     [flash]
   );
 
+  async function persistEncrypted(name: string): Promise<UnlockEntry | null> {
+    const unlock = getUnlockEntry(name);
+    if (!unlock) return null;
+
+    const envelope = await encryptWithKey(unlock.key, unlock.salt, {
+      body: bodyValueRef.current,
+      board: boardValueRef.current,
+    });
+    envelopeRef.current = envelope;
+    await writeNoteLocal(name, envelope, '');
+
+    return unlock;
+  }
+
   const saveCurrent = useCallback(async () => {
     await runNoteOp(async () => {
       const name = currentRef.current;
-      if (!name) return;
+      if (!name || isNoteLocked) return;
 
       flash('Saving...');
-      await writeNoteLocal(
-        name,
-        bodyValueRef.current,
-        boardValueRef.current
-      );
+
+      if (isNoteEncryptedRef.current) {
+        if (!(await persistEncrypted(name))) return;
+      } else {
+        await writeNoteLocal(
+          name,
+          bodyValueRef.current,
+          boardValueRef.current
+        );
+      }
+
       await refreshList();
       flash('Saved', 'ok');
     });
-  }, [flash, refreshList]);
+  }, [flash, isNoteLocked, refreshList]);
 
   const scheduleSave = useCallback(() => {
+    if (isNoteLocked) return;
     if (saveTimer.current) clearTimeout(saveTimer.current);
 
     flash('Saving...');
@@ -160,7 +258,7 @@ export default function SidePad() {
         flash(errorMessage(caughtError), 'error')
       );
     }, 400);
-  }, [flash, saveCurrent]);
+  }, [flash, isNoteLocked, saveCurrent]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(max-width: 768px)');
@@ -275,12 +373,59 @@ export default function SidePad() {
     });
   }
 
+  async function clearOpenNote() {
+    setCurrent(null);
+    setTitle('');
+    setBody('');
+    setBoard('');
+    envelopeRef.current = '';
+    setIsNoteEncrypted(false);
+    setIsNoteLocked(false);
+    await editorRef.current?.fill('');
+  }
+
+  async function enterIncognito() {
+    setIsIncognito(true);
+
+    if (currentRef.current && !isNoteEncryptedRef.current) {
+      await clearOpenNote();
+    }
+
+    flash('Incognito on', 'ok');
+  }
+
+  async function exitIncognito() {
+    setIsIncognito(false);
+    flash('Incognito off');
+  }
+
+  async function writeNewNote(name: string) {
+    if (isIncognito) {
+      const { envelope, key, salt } = await encryptNote(
+        getDevicePassphrase(),
+        { body: '', board: '' }
+      );
+
+      await writeNoteLocal(name, envelope, '');
+      envelopeRef.current = envelope;
+      setUnlockEntry(name, { key, salt });
+      setIsNoteEncrypted(true);
+      setIsNoteLocked(false);
+      return;
+    }
+
+    await writeNoteLocal(name, '', '');
+    envelopeRef.current = '';
+    setIsNoteEncrypted(false);
+    setIsNoteLocked(false);
+  }
+
   async function createNote() {
     const taken = new Set(allNotes.map((note) => note.name));
     const name = uniqueNoteName(taken, '');
 
     await runNoteOp(async () => {
-      await writeNoteLocal(name, '', '');
+      await writeNewNote(name);
       setCurrent(name);
       setTitle(basename(name));
       setBody('');
@@ -312,7 +457,7 @@ export default function SidePad() {
     const name = uniqueNoteName(taken, folderPath);
 
     await runNoteOp(async () => {
-      await writeNoteLocal(name, '', '');
+      await writeNewNote(name);
       setCollapsedFolders((previous) => {
         const next = new Set(previous);
         next.delete(folderPath);
@@ -359,22 +504,38 @@ export default function SidePad() {
 
         if (!from) {
           flash('Saving...');
-          await writeNoteLocal(
-            name,
-            bodyValueRef.current,
-            boardValueRef.current
-          );
+
+          if (isNoteEncryptedRef.current) {
+            const unlock = await persistEncrypted(name);
+            if (!unlock) return;
+
+            setUnlockEntry(name, unlock);
+          } else {
+            await writeNoteLocal(
+              name,
+              bodyValueRef.current,
+              boardValueRef.current
+            );
+          }
+
           setCurrent(name);
           setTitle(basename(name));
           flash('Created', 'ok');
         } else if (name !== from) {
           flash('Saving...');
-          await writeNoteLocal(
-            from,
-            bodyValueRef.current,
-            boardValueRef.current
-          );
+
+          if (isNoteEncryptedRef.current) {
+            if (!(await persistEncrypted(from))) return;
+          } else {
+            await writeNoteLocal(
+              from,
+              bodyValueRef.current,
+              boardValueRef.current
+            );
+          }
+
           const next = await renameNoteLocal(from, name);
+          renameUnlockEntry(from, next);
           setCurrent(next);
           setTitle(basename(next));
           flash('Renamed', 'ok');
@@ -390,12 +551,16 @@ export default function SidePad() {
   async function deleteNoteByName(name: string) {
     setConfirmName(null);
     await deleteNoteLocal(name);
+    clearUnlockEntry(name);
 
     if (current === name) {
       setCurrent(null);
       setTitle('');
       setBody('');
       setBoard('');
+      envelopeRef.current = '';
+      setIsNoteEncrypted(false);
+      setIsNoteLocked(false);
     }
 
     flash('Deleted', 'ok');
@@ -403,8 +568,71 @@ export default function SidePad() {
     setAllNotes(notes);
 
     if (current === name || !current) {
-      if (notes.length) await openNote(notes[0].name);
+      const nextNote = isIncognito
+        ? notes.find((note) => isEncryptedNote(note.body))
+        : notes[0];
+
+      if (nextNote) await openNote(nextNote.name);
+      else await clearOpenNote();
     }
+  }
+
+  async function unlockCurrent(passphrase: string) {
+    const name = currentRef.current;
+    if (!name || !envelopeRef.current) return;
+
+    const unlocked = await decryptNote(passphrase, envelopeRef.current);
+
+    setUnlockEntry(name, { key: unlocked.key, salt: unlocked.salt });
+    setIsNoteLocked(false);
+    setIsNoteEncrypted(true);
+    setBody(unlocked.body);
+    setBoard(unlocked.board);
+    setPasswordModalMode(null);
+    flash('Unlocked', 'ok');
+    await editorRef.current?.fill(unlocked.body);
+  }
+
+  async function lockCurrent() {
+    const name = currentRef.current;
+    if (!name || !isNoteEncryptedRef.current) return;
+
+    if (saveTimer.current) {
+      clearTimeout(saveTimer.current);
+      saveTimer.current = null;
+    }
+
+    await saveCurrent();
+    clearUnlockEntry(name);
+    setIsNoteLocked(true);
+    setBody('');
+    setBoard('');
+    flash('Locked');
+    await editorRef.current?.fill('');
+  }
+
+  async function removeEncryption() {
+    const name = currentRef.current;
+    if (!name || !isNoteEncryptedRef.current || isNoteLocked) return;
+
+    const unlock = getUnlockEntry(name);
+    if (!unlock) return;
+
+    setIsRemoveEncryptOpen(false);
+
+    await runNoteOp(async () => {
+      await writeNoteLocal(
+        name,
+        bodyValueRef.current,
+        boardValueRef.current
+      );
+      clearUnlockEntry(name);
+      envelopeRef.current = '';
+      setIsNoteEncrypted(false);
+      setIsNoteLocked(false);
+      await refreshList();
+      flash('Encryption removed', 'ok');
+    });
   }
 
   async function logout() {
@@ -413,17 +641,25 @@ export default function SidePad() {
     window.location.href = '/auth/login';
   }
 
+  const encryptedNames = new Set(
+    allNotes
+      .filter((note) => isEncryptedNote(note.body))
+      .map((note) => note.name)
+  );
+
   const filtered = allNotes.filter((note) => {
+    if (isIncognito && !isEncryptedNote(note.body)) return false;
+
     const query = search.trim().toLowerCase();
     if (!query) return true;
 
-    return (
-      note.name.toLowerCase().includes(query) ||
-      note.body.toLowerCase().includes(query)
-    );
+    if (note.name.toLowerCase().includes(query)) return true;
+    if (isEncryptedNote(note.body)) return false;
+
+    return note.body.toLowerCase().includes(query);
   });
 
-  const noteTree = buildNoteTree(filtered);
+  const noteTree = buildNoteTree(filtered, encryptedNames);
   const isSearching = Boolean(search.trim());
   const isEmpty = !current;
 
@@ -478,7 +714,12 @@ export default function SidePad() {
                 : 'text-[var(--sidebar-fg)]/90 hover:bg-white/7'
             }`}
           >
-            <span aria-hidden="true" className="inline-block w-3 shrink-0" />
+            <span
+              aria-hidden="true"
+              className="inline-block w-3 shrink-0 text-center text-[11px] leading-none opacity-55"
+            >
+              {encryptedNames.has(node.name) ? '🔒' : ''}
+            </span>
             <span className="truncate">{node.label}</span>
           </button>
           <button
@@ -515,6 +756,18 @@ export default function SidePad() {
   }
 
   useEffect(() => {
+    if (isIncognito) {
+      document.documentElement.dataset.incognito = '';
+    } else {
+      delete document.documentElement.dataset.incognito;
+    }
+
+    return () => {
+      delete document.documentElement.dataset.incognito;
+    };
+  }, [isIncognito]);
+
+  useEffect(() => {
     const handler = (event: globalThis.KeyboardEvent) => onGlobalKey(event);
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
@@ -545,7 +798,7 @@ export default function SidePad() {
       ) : null}
 
       <aside
-        className={`scroll-on-dark flex min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--sidebar)] px-3 pb-3 text-[var(--sidebar-fg)] transition-[opacity,transform] duration-200 ${
+        className={`scroll-on-dark flex min-h-0 min-w-0 flex-col overflow-hidden bg-[var(--sidebar)] px-3 pb-3 text-[var(--sidebar-fg)] transition-[opacity,transform,background-color,color] duration-300 ${
           isSidebarCollapsed
             ? 'pointer-events-none opacity-0'
             : isMobile
@@ -571,8 +824,10 @@ export default function SidePad() {
               <p className="m-0 text-[26px] font-bold leading-none tracking-tight">
                 SidePad
               </p>
-              <p className="mt-2 max-w-[12ch] text-[13px] leading-snug text-[var(--sidebar-fg)]/55">
-                Notes that stay with you
+              <p className="mt-2 max-w-[14ch] text-[13px] leading-snug text-[var(--sidebar-fg)]/55">
+                {isIncognito
+                  ? 'Encrypted notes only'
+                  : 'Notes that stay with you'}
               </p>
             </div>
           </div>
@@ -586,25 +841,59 @@ export default function SidePad() {
           </button>
         </div>
 
-        <div className="mx-1 grid grid-cols-[1fr_auto] gap-2">
+        <div className="mx-1 grid grid-cols-3 gap-2">
           <button
             type="button"
+            aria-label="New note"
+            title="New note"
             onClick={() =>
               createNote().catch((caughtError) =>
                 flash(errorMessage(caughtError), 'error')
               )
             }
-            className="rounded-[var(--radius)] bg-[var(--accent)] px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--accent-press)] active:scale-[0.98]"
+            className="flex h-10 items-center justify-center rounded-[var(--radius)] bg-[var(--accent)] text-white transition-[background-color,transform] hover:bg-[var(--accent-press)] active:scale-[0.98]"
           >
-            New note
+            <NotePencil size={18} weight="bold" aria-hidden />
           </button>
           <button
             type="button"
             aria-label="New folder"
+            title="New folder"
             onClick={() => setIsFolderModalOpen(true)}
-            className="rounded-[var(--radius)] bg-white/10 px-3 py-2.5 text-sm font-medium text-[var(--sidebar-fg)]/85 transition-colors hover:bg-white/14 active:scale-[0.98]"
+            className="flex h-10 items-center justify-center rounded-[var(--radius)] border border-white/14 bg-transparent text-[var(--sidebar-fg)]/80 transition-[background-color,border-color,color,transform] hover:border-white/22 hover:bg-white/6 hover:text-[var(--sidebar-fg)] active:scale-[0.98]"
           >
-            Folder
+            <FolderPlus size={18} weight="bold" aria-hidden />
+          </button>
+          <button
+            type="button"
+            aria-pressed={isIncognito}
+            aria-label={isIncognito ? 'Exit Incognito' : 'Enter Incognito'}
+            title={isIncognito ? 'Exit Incognito' : 'Incognito'}
+            onClick={() => {
+              if (isIncognito) {
+                exitIncognito().catch((caughtError) =>
+                  flash(errorMessage(caughtError), 'error')
+                );
+                return;
+              }
+
+              enterIncognito().catch((caughtError) =>
+                flash(errorMessage(caughtError), 'error')
+              );
+            }}
+            className={`flex h-10 items-center justify-center rounded-[var(--radius)] border transition-[background-color,border-color,color,transform] active:scale-[0.98] ${
+              isIncognito
+                ? 'border-[var(--accent)] bg-[color-mix(in_oklab,var(--accent)_22%,transparent)] text-[var(--sidebar-fg)] hover:bg-[color-mix(in_oklab,var(--accent)_30%,transparent)]'
+                : 'border-white/14 bg-transparent text-[var(--sidebar-fg)]/70 hover:border-white/22 hover:bg-white/6 hover:text-[var(--sidebar-fg)]'
+            }`}
+          >
+            <HugeiconsIcon
+              icon={IncognitoIcon}
+              size={18}
+              color="currentColor"
+              strokeWidth={2}
+              aria-hidden
+            />
           </button>
         </div>
 
@@ -624,7 +913,11 @@ export default function SidePad() {
             </ul>
           ) : (
             <p className="m-0 px-2 py-6 text-center text-[13px] leading-relaxed text-[var(--sidebar-fg)]/40">
-              {isSearching ? 'No notes match.' : 'No notes yet.'}
+              {isSearching
+                ? 'No notes match.'
+                : isIncognito
+                  ? 'No encrypted notes yet.'
+                  : 'No notes yet.'}
             </p>
           )}
         </div>
@@ -656,6 +949,8 @@ export default function SidePad() {
         statusKind={statusKind}
         isChatCollapsed={isChatCollapsed}
         isSidebarCollapsed={isSidebarCollapsed}
+        isEncrypted={isNoteEncrypted}
+        isLocked={isNoteLocked}
         onTitleChange={(next) => setTitle(next.replace(/[\\/]/g, ''))}
         onCommitTitle={async () => {
           try {
@@ -675,6 +970,13 @@ export default function SidePad() {
             flash(errorMessage(caughtError), 'error')
           )
         }
+        onRequestUnlock={() => setPasswordModalMode('unlock')}
+        onLock={() =>
+          lockCurrent().catch((caughtError) =>
+            flash(errorMessage(caughtError), 'error')
+          )
+        }
+        onRequestRemoveEncryption={() => setIsRemoveEncryptOpen(true)}
       />
 
       <AskPanel
@@ -683,6 +985,7 @@ export default function SidePad() {
         isOnline={isOnline}
         isCollapsed={isChatCollapsed}
         isOverlay={isMobile}
+        isEncrypted={isNoteEncrypted}
         onCollapse={toggleChat}
         flash={flash}
         saveCurrent={saveCurrent}
@@ -705,6 +1008,30 @@ export default function SidePad() {
         confirmLabel="Create"
         onClose={() => setIsFolderModalOpen(false)}
         onConfirm={createFolder}
+      />
+
+      <PromptModal
+        open={passwordModalMode === 'unlock'}
+        title="Unlock note"
+        body="Enter the passphrase for this note."
+        label="Passphrase"
+        confirmLabel="Unlock"
+        inputType="password"
+        onClose={() => setPasswordModalMode(null)}
+        onConfirm={unlockCurrent}
+      />
+
+      <ConfirmModal
+        open={isRemoveEncryptOpen}
+        title="Remove encryption"
+        body="This note will be stored as plain text again on this device and in sync."
+        confirmLabel="Remove encryption"
+        onClose={() => setIsRemoveEncryptOpen(false)}
+        onConfirm={() => {
+          removeEncryption().catch((caughtError) =>
+            flash(errorMessage(caughtError), 'error')
+          );
+        }}
       />
 
       <ConfirmModal

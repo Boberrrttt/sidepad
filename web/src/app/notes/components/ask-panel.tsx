@@ -21,6 +21,7 @@ type AskPanelProps = {
   isOnline: boolean;
   isCollapsed: boolean;
   isOverlay: boolean;
+  isEncrypted: boolean;
   onCollapse: (isCollapsed: boolean) => void;
   flash: (message: string, kind?: 'neutral' | 'ok' | 'error') => void;
   saveCurrent: () => Promise<void>;
@@ -35,6 +36,7 @@ export function AskPanel({
   isOnline,
   isCollapsed,
   isOverlay,
+  isEncrypted,
   onCollapse,
   flash,
   saveCurrent,
@@ -92,7 +94,7 @@ export function AskPanel({
   }
 
   async function askCurrent(override?: string, regenerate = false) {
-    if (!current || isAsking) return;
+    if (!current || isAsking || isEncrypted) return;
 
     if (!navigator.onLine) {
       flash('Ask needs network', 'error');
@@ -270,6 +272,12 @@ export function AskPanel({
               Open a note to ask about it.
             </p>
           </div>
+        ) : isEncrypted ? (
+          <div className="flex h-full min-h-[12rem] items-center justify-center px-2 text-center">
+            <p className="m-0 max-w-[22ch] text-sm leading-relaxed text-[var(--mute)]">
+              Encrypted notes cannot use Ask.
+            </p>
+          </div>
         ) : chatMessages.length === 0 && !isThinking ? (
           <div className="flex h-full min-h-[12rem] flex-col items-center justify-center gap-3 px-2 text-center">
             <div>
@@ -406,7 +414,7 @@ export function AskPanel({
           <textarea
             value={askInput}
             rows={1}
-            disabled={isAsking || isEmpty || !isOnline}
+            disabled={isAsking || isEmpty || !isOnline || isEncrypted}
             onChange={(event) => setAskInput(event.target.value)}
             onKeyDown={(event) => {
               if (event.key !== 'Enter' || event.shiftKey) return;
@@ -415,7 +423,13 @@ export function AskPanel({
                 flash(errorMessage(caughtError), 'error')
               );
             }}
-            placeholder={isOnline ? 'Ask about this note' : 'Needs network'}
+            placeholder={
+              isEncrypted
+                ? 'Encrypted notes cannot use Ask'
+                : isOnline
+                  ? 'Ask about this note'
+                  : 'Needs network'
+            }
             className="max-h-28 min-h-[2.25rem] min-w-0 flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm outline-none disabled:opacity-60"
           />
           {isAsking ? (
@@ -429,7 +443,7 @@ export function AskPanel({
           ) : (
             <button
               type="button"
-              disabled={isEmpty || !isOnline}
+              disabled={isEmpty || !isOnline || isEncrypted}
               onClick={() =>
                 askCurrent().catch((caughtError) =>
                   flash(errorMessage(caughtError), 'error')

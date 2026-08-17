@@ -22,6 +22,23 @@
   --scroll-hover: color-mix(in oklab, var(--mute) 85%, transparent);
 }
 
+:root[data-incognito] {
+  --ink: #12141a;
+  --ink-soft: #3a4050;
+  --mute: #6a7180;
+  --bone: #e6e8ed;
+  --paper: #f1f3f6;
+  --panel: #f7f8fa;
+  --line: #d2d6de;
+  --line-soft: #e0e3e9;
+  --forest: #161a22;
+  --accent: #4a5d73;
+  --accent-press: #3c4d61;
+  --accent-soft: #d8dee6;
+  --sidebar: #141820;
+  --sidebar-fg: #eef0f4;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --ink: #f2f5f2;
@@ -42,6 +59,23 @@
     --sidebar-fg: #e8ece8;
     --scroll: color-mix(in oklab, var(--mute) 45%, transparent);
     --scroll-hover: color-mix(in oklab, var(--mute) 70%, transparent);
+  }
+
+  :root[data-incognito] {
+    --ink: #eef0f4;
+    --ink-soft: #c8ced8;
+    --mute: #9aa3b2;
+    --bone: #0a0c10;
+    --paper: #10131a;
+    --panel: #151922;
+    --line: #2a3140;
+    --line-soft: #222836;
+    --forest: #d8dde6;
+    --accent: #7a8fa8;
+    --accent-press: #6a7f98;
+    --accent-soft: #1c2430;
+    --sidebar: #080a0e;
+    --sidebar-fg: #e8ebf0;
   }
 }
 
@@ -90,6 +124,13 @@ body {
     radial-gradient(ellipse 70% 50% at 100% 0%, color-mix(in oklab, var(--accent) 14%, transparent), transparent 55%),
     radial-gradient(ellipse 45% 35% at 0% 100%, color-mix(in oklab, var(--sidebar) 8%, transparent), transparent 50%),
     var(--bone);
+  transition: color 300ms ease, background-color 300ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body {
+    transition: none;
+  }
 }
 
 .note-editor:empty:before {

@@ -14,7 +14,23 @@ export function dirname(path: string): string {
   return index === -1 ? '' : path.slice(0, index);
 }
 
-export function buildNoteTree(notes: Note[]): NoteTreeNode[] {
+function sortNotesEncryptedFirst(
+  notes: Extract<NoteTreeNode, { kind: 'note' }>[],
+  encryptedNames: Set<string>
+): Extract<NoteTreeNode, { kind: 'note' }>[] {
+  return [...notes].sort((left, right) => {
+    const rank =
+      Number(encryptedNames.has(right.name)) -
+      Number(encryptedNames.has(left.name));
+
+    return rank || left.label.localeCompare(right.label);
+  });
+}
+
+export function buildNoteTree(
+  notes: Note[],
+  encryptedNames: Set<string> = new Set()
+): NoteTreeNode[] {
   type FolderNode = {
     kind: 'folder';
     path: string;
@@ -76,9 +92,10 @@ export function buildNoteTree(notes: Note[]): NoteTreeNode[] {
     const nested = [...folder.folders.values()]
       .sort((left, right) => left.name.localeCompare(right.name))
       .map(finalize);
-    const notesOnly = folder.children
-      .filter((child) => child.kind === 'note')
-      .sort((left, right) => left.label.localeCompare(right.label));
+    const notesOnly = sortNotesEncryptedFirst(
+      folder.children.filter((child) => child.kind === 'note'),
+      encryptedNames
+    );
 
     return {
       kind: 'folder',
@@ -91,9 +108,7 @@ export function buildNoteTree(notes: Note[]): NoteTreeNode[] {
   const folders = [...rootFolders.values()]
     .sort((left, right) => left.name.localeCompare(right.name))
     .map(finalize);
-  const sortedNotes = rootNotes.sort((left, right) =>
-    left.label.localeCompare(right.label)
-  );
+  const sortedNotes = sortNotesEncryptedFirst(rootNotes, encryptedNames);
 
   return [...folders, ...sortedNotes];
 }

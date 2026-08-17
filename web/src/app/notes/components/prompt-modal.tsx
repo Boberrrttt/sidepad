@@ -9,6 +9,8 @@ type PromptModalProps = {
   label: string;
   confirmLabel: string;
   placeholder?: string;
+  inputType?: 'text' | 'password';
+  requireConfirm?: boolean;
   onClose: () => void;
   onConfirm: (value: string) => void | Promise<void>;
 };
@@ -20,18 +22,23 @@ export function PromptModal({
   label,
   confirmLabel,
   placeholder,
+  inputType = 'text',
+  requireConfirm = false,
   onClose,
   onConfirm,
 }: PromptModalProps) {
   const [value, setValue] = useState('');
+  const [confirmValue, setConfirmValue] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const isPassword = inputType === 'password';
 
   useEffect(() => {
     if (!open) return;
 
     setValue('');
+    setConfirmValue('');
     setError('');
     setSaving(false);
 
@@ -57,8 +64,13 @@ export function PromptModal({
   async function submit(event: FormEvent) {
     event.preventDefault();
 
-    const next = value.trim();
+    const next = isPassword ? value : value.trim();
     if (!next || saving) return;
+
+    if (requireConfirm && next !== confirmValue) {
+      setError('Passphrases do not match');
+      return;
+    }
 
     setSaving(true);
     setError('');
@@ -75,7 +87,10 @@ export function PromptModal({
     }
   }
 
-  const canSubmit = Boolean(value.trim()) && !saving;
+  const canSubmit =
+    Boolean(isPassword ? value : value.trim()) &&
+    (!requireConfirm || Boolean(confirmValue)) &&
+    !saving;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -102,19 +117,36 @@ export function PromptModal({
           {label}
           <input
             ref={inputRef}
+            type={inputType}
             value={value}
             onChange={(event) => {
               setValue(event.target.value);
               if (error) setError('');
             }}
             placeholder={placeholder}
-            autoComplete="off"
+            autoComplete={isPassword ? 'new-password' : 'off'}
             disabled={saving}
             aria-invalid={Boolean(error)}
             aria-describedby={error ? 'prompt-modal-error' : undefined}
             className="mt-1.5 w-full rounded-[var(--radius)] border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm text-[var(--ink)] outline-none placeholder:text-[var(--mute)] focus:border-[var(--accent)] disabled:opacity-60"
           />
         </label>
+        {requireConfirm ? (
+          <label className="mt-3 block text-sm font-medium text-[var(--ink-soft)]">
+            Confirm {label.toLowerCase()}
+            <input
+              type={inputType}
+              value={confirmValue}
+              onChange={(event) => {
+                setConfirmValue(event.target.value);
+                if (error) setError('');
+              }}
+              autoComplete={isPassword ? 'new-password' : 'off'}
+              disabled={saving}
+              className="mt-1.5 w-full rounded-[var(--radius)] border border-[var(--line)] bg-[var(--panel)] px-3 py-2 text-sm text-[var(--ink)] outline-none placeholder:text-[var(--mute)] focus:border-[var(--accent)] disabled:opacity-60"
+            />
+          </label>
+        ) : null}
         {error ? (
           <p
             id="prompt-modal-error"
@@ -138,7 +170,7 @@ export function PromptModal({
             disabled={!canSubmit}
             className="rounded-[var(--radius)] bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-[var(--accent-press)] active:scale-[0.98] disabled:opacity-50"
           >
-            {saving ? 'Creating…' : confirmLabel}
+            {saving ? 'Working…' : confirmLabel}
           </button>
         </div>
       </form>
