@@ -361,20 +361,6 @@ export const NoteEditor = forwardRef<NoteEditorHandle, NoteEditorProps>(
                 </button>
               </div>
             </div>
-
-            <div className="pointer-events-none absolute bottom-14 right-6 z-10">
-              <Mascot
-                key={`${statusKind}:${status}`}
-                size="lg"
-                mood={
-                  statusKind === 'error'
-                    ? 'worried'
-                    : statusKind === 'ok'
-                      ? 'happy'
-                      : 'idle'
-                }
-              />
-            </div>
           </div>
         )}
 

@@ -26,6 +26,7 @@ type AskPanelProps = {
   saveCurrent: () => Promise<void>;
   refreshList: () => Promise<void>;
   onNoteWrite: (body: string) => Promise<void>;
+  onBoardWrite: (board: string) => Promise<void>;
 };
 
 export function AskPanel({
@@ -39,6 +40,7 @@ export function AskPanel({
   saveCurrent,
   refreshList,
   onNoteWrite,
+  onBoardWrite,
 }: AskPanelProps) {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [askInput, setAskInput] = useState('');
@@ -163,6 +165,13 @@ export function AskPanel({
           setLiveSteps((previous) => [...previous, 'Updated note']);
           await onNoteWrite(askEvent.body);
           await mirrorNoteFromServer(current, askEvent.body, askEvent.mtime);
+          await refreshList();
+          requestAnimationFrame(scrollChatIfNeeded);
+        } else if (askEvent.type === 'board_write') {
+          setPanelStatus('Writing board…');
+          setLiveSteps((previous) => [...previous, 'Updated board']);
+          await onBoardWrite(askEvent.board);
+          await mirrorNoteFromServer(current, null, askEvent.mtime, askEvent.board);
           await refreshList();
           requestAnimationFrame(scrollChatIfNeeded);
         } else if (askEvent.type === 'error') {

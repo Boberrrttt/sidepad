@@ -691,6 +691,9 @@ export default function SidePad() {
           setBody(nextBody);
           await editorRef.current?.fill(nextBody);
         }}
+        onBoardWrite={async (nextBoard) => {
+          setBoard(nextBoard);
+        }}
       />
 
       <PromptModal

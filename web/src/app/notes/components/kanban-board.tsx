@@ -65,6 +65,13 @@ export function KanbanBoard({
   onScheduleSaveRef.current = onScheduleSave;
 
   useEffect(() => {
+    const parsed = parseBoard(boardJson) ?? { v: 1, columns: [] };
+    if (serializeBoard(parsed) === serializeBoard(boardRef.current)) return;
+    setBoard(parsed);
+    boardRef.current = parsed;
+  }, [boardJson]);
+
+  useEffect(() => {
     if (!linked) return;
 
     let busy = false;

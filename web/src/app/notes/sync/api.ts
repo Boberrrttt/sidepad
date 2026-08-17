@@ -145,15 +145,16 @@ export async function clearChatLocal(name: string): Promise<void> {
 
 export async function mirrorNoteFromServer(
   name: string,
-  body: string,
-  mtime: number
+  body: string | null,
+  mtime: number,
+  board?: string
 ): Promise<void> {
   const local = (await localListNotes()).find((note) => note.name === name);
   if (local && local.mtime > mtime) return;
   await localPutNote({
     name,
-    body,
-    board: local?.board ?? '',
+    body: body ?? local?.body ?? '',
+    board: board ?? local?.board ?? '',
     mtime,
   });
 }

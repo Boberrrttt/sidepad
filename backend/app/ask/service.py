@@ -28,6 +28,7 @@ def run_ask(
 
     note = notes_service.read_note(user_id, name)
     body = (note or {}).get("body") or ""
+    board = (note or {}).get("board") or ""
     chat = chat_service.read_chat(user_id, name)
     history = [
         chat_message
@@ -39,7 +40,7 @@ def run_ask(
     messages: list[dict[str, Any]] = [
         {
             "role": "system",
-            "content": prompts.system_prompt(name, body),
+            "content": prompts.system_prompt(name, body, board),
         },
         *history[-MAX_HISTORY:],
         user_message,

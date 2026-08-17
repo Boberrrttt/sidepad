@@ -96,5 +96,6 @@ export type OutboxOp =
 export type AskEvent =
   | { type: 'chunk'; text: string }
   | { type: 'note_write'; body: string; mtime: number }
+  | { type: 'board_write'; board: string; mtime: number }
   | { type: 'done' }
   | { type: 'error'; message: string };
