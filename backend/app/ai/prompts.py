@@ -1,7 +1,8 @@
-def system_prompt(note_name: str, note_body: str, _note_board: str) -> str:
+def system_prompt(note_name: str, note_body: str) -> str:
     return (
         "You help with one note. Be concise.\n"
         "For small note edits: call edit_note with exact find + replace.\n"
+        "For several small changes: call edit_note once per change.\n"
         "For full note rewrite only: call write_note with the full new body.\n"
         "find must match exactly once. Copy text from the note.\n"
         "Never put the new note body in chat when a tool can do it.\n"

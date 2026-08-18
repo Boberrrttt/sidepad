@@ -10,6 +10,7 @@ from app.notes import service as notes_service
 from app.shared.exceptions import DomainError
 
 MAX_HISTORY = 6
+MAX_TOOL_ROUNDS = 3
 
 
 def run_ask(
@@ -28,7 +29,6 @@ def run_ask(
 
     note = notes_service.read_note(user_id, name)
     body = (note or {}).get("body") or ""
-    board = (note or {}).get("board") or ""
     chat = chat_service.read_chat(user_id, name)
     history = [
         chat_message
@@ -40,7 +40,7 @@ def run_ask(
     messages: list[dict[str, Any]] = [
         {
             "role": "system",
-            "content": prompts.system_prompt(name, body, board),
+            "content": prompts.system_prompt(name, body),
         },
         *history[-MAX_HISTORY:],
         user_message,
@@ -49,30 +49,55 @@ def run_ask(
     streamed = provider.stream_chat(
         config, messages, lambda text: emit({"type": "chunk", "text": text}), True
     )
-    content = streamed["content"]
+    content = streamed["content"] or ""
     tool_calls = streamed["tool_calls"]
+    rounds = 0
 
-    if tool_calls:
+    while tool_calls and rounds < MAX_TOOL_ROUNDS:
+        rounds += 1
         messages.append(
             {
                 "role": "assistant",
-                "content": content or None,
+                "content": streamed["content"] or None,
                 "tool_calls": tool_calls,
             }
         )
 
+        any_ok = False
         for tool_call in tool_calls:
-            messages.append(
-                tools.apply_tool_call(tool_call, user_id, name, emit)
-            )
+            result = tools.apply_tool_call(tool_call, user_id, name, emit)
+            messages.append(result)
+            if result["content"] == "ok":
+                any_ok = True
 
+        if any_ok:
+            note = notes_service.read_note(user_id, name) or {}
+            body = str(note.get("body") or "")
+            messages[0] = {
+                "role": "system",
+                "content": prompts.system_prompt(name, body),
+            }
+
+        if rounds >= MAX_TOOL_ROUNDS:
+            break
+
+        streamed = provider.stream_chat(
+            config,
+            messages,
+            lambda text: emit({"type": "chunk", "text": text}),
+            True,
+        )
+        content += streamed["content"] or ""
+        tool_calls = streamed["tool_calls"]
+
+    if rounds and not content:
         follow = provider.stream_chat(
             config,
             messages,
             lambda text: emit({"type": "chunk", "text": text}),
             False,
         )
-        content = (content or "") + follow["content"]
+        content += follow["content"] or ""
 
     if not content:
         raise DomainError("Empty reply from Groq")

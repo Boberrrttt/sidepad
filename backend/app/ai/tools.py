@@ -55,7 +55,7 @@ def find_replace(body: str, find: str, replace: str) -> tuple[str | None, str]:
 
     count = body.count(find)
     if count == 0:
-        return None, "find not found"
+        return None, "find not found; copy exact text"
     if count > 1:
         return None, f"find matched {count} times; make find unique"
 
@@ -108,6 +108,19 @@ def apply_tool_call(
 
     if name == "write_note":
         next_body = str(args.get("body") or "")
+        if not next_body.strip():
+            return {
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": "write_note body is empty",
+            }
+        if next_body == body:
+            return {
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": "write_note body unchanged; use edit_note for small edits",
+            }
+
         mtime = int(time.time() * 1000)
         notes_service.write_note(user_id, note_name, next_body, mtime)
         emit({"type": "note_write", "body": next_body, "mtime": mtime})

@@ -19,7 +19,7 @@ def stream_chat(
         "model": config["model"],
         "stream": True,
         "messages": messages,
-        "temperature": 0.2,
+        "temperature": 0 if with_tools else 0.2,
     }
     if with_tools:
         payload["tools"] = TOOLS
